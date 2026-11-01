@@ -1,6 +1,6 @@
 //! Creating, reattaching, stopping, removing and listing Sandboxes, waiting on the BoxLite
-//! runtime, and what a start that is tried again prints: `src/sandbox.rs`, `src/runtime.rs`,
-//! `src/reap.rs` and `src/log.rs`.
+//! runtime, and starts that are tried again and what they print: `src/sandbox.rs`,
+//! `src/runtime.rs`, `src/reap.rs`, `src/log.rs` and `src/image_store.rs`.
 //!
 //! Where a test needs another boxq process holding the BoxLite home, a second runtime in this
 //! process stands in for it: BoxLite's home lock is a `flock` on a file each runtime opens for
@@ -122,6 +122,33 @@ async fn a_start_that_succeeds_when_tried_again_prints_only_boxqs_line_about_it(
         !before.contains("ERROR"),
         "BoxLite's errors from the failed attempt were printed:\n{before}"
     );
+}
+
+/// BoxLite 0.11 can rename an image config into its store before the bytes are written, and if
+/// they never are, every start of that image reads it back empty (jonaswre/boxlite-quick#60). A
+/// cold fixture's store is its own, so its config is this test's to empty.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "boots a real Box; needs KVM"]
+async fn a_sandbox_whose_image_config_was_left_empty_starts() {
+    let f = Fixture::cold();
+    let digest = {
+        let rt = f.runtime();
+        let pulled = rt.images().unwrap().pull(IMAGE).await.unwrap();
+        pulled.config_digest().to_owned()
+    };
+    let config = f
+        .sandboxes
+        .boxlite_home()
+        .join("images/configs")
+        .join(format!("{}.json", digest.replace(':', "-")));
+    std::fs::write(&config, "").unwrap();
+
+    let up = f.up(IMAGE).await;
+
+    let ran = sh(&up.target, "echo hello").await.unwrap();
+    assert_eq!(ran, ("hello\n".into(), 0));
+    let bytes = std::fs::read(&config).unwrap();
+    assert_eq!(format!("sha256:{}", sha256_hex(&[&bytes])), digest);
 }
 
 /// Waits for the first Box under `home` to enter its VM, then creates a plain file where libkrun

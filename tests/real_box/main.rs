@@ -21,13 +21,15 @@ mod session;
 mod setup;
 mod spec;
 
+use boxlite::BoxliteRuntime;
 use boxlite::runtime::options::BoxliteOptions;
-use boxlite::{BoxliteError, BoxliteRuntime};
 use boxq::Workspace;
 use boxq::auth::Auth;
 use boxq::claude_config::ClaudeConfig;
 use boxq::config::{BaseUrl, Egress, SetupHooks};
+use boxq::digest::sha256_hex;
 use boxq::egress::Policy;
+use boxq::image_store::{is_config_mismatch, remove_bad_configs};
 use boxq::reap::reap_box;
 use boxq::sandbox::{ExecTarget, Sandboxes, Up};
 use boxq::spec::Spec;
@@ -230,11 +232,8 @@ const PULL_ATTEMPTS: u32 = 3;
 
 /// Pulls `images` into [`IMAGE_STORE`] through a BoxLite home of their own at `home`.
 ///
-/// BoxLite 0.11 renames a config it has downloaded into place without flushing it, then reads it
-/// straight back. If the write is still queued in tokio's blocking pool, BoxLite reads an empty
-/// file and the pull fails with "image config digest mismatch" (jonaswre/boxlite-quick#54).
-/// A later pull trusts any config that exists, so a bad one is removed before the image is
-/// pulled again.
+/// BoxLite 0.11 can read back a config it has just downloaded as empty (see
+/// [`is_config_mismatch`]), so a bad one is removed before the image is pulled again.
 fn pull_into_store(home: &Path, images: &[&str]) {
     link_image_dirs(home);
     // The first test to ask runs in its own tokio runtime. The BoxLite runtime is dropped once
@@ -245,11 +244,8 @@ fn pull_into_store(home: &Path, images: &[&str]) {
             let mut attempt = 1;
             loop {
                 match rt.images().unwrap().pull(image).await {
-                    Err(BoxliteError::Storage(e))
-                        if attempt < PULL_ATTEMPTS
-                            && e.contains("image config digest mismatch") =>
-                    {
-                        remove_bad_configs();
+                    Err(e) if attempt < PULL_ATTEMPTS && is_config_mismatch(&e) => {
+                        remove_bad_configs(home).unwrap();
                         attempt += 1;
                     }
                     pulled => {
@@ -260,28 +256,6 @@ fn pull_into_store(home: &Path, images: &[&str]) {
             }
         }
     });
-}
-
-/// Removes every config in [`IMAGE_STORE`] whose bytes don't match the digest it's named by.
-fn remove_bad_configs() {
-    for file in std::fs::read_dir(IMAGE_STORE.join("configs")).unwrap() {
-        let path = file.unwrap().path();
-        // BoxLite names a config `sha256-<hex>.json`, and one it's still downloading otherwise.
-        let name = path.file_name().and_then(|n| n.to_str());
-        let Some(hex) = name.and_then(|n| n.strip_prefix("sha256-")?.strip_suffix(".json")) else {
-            continue;
-        };
-        if std::fs::read(&path).is_ok_and(|bytes| sha256_hex(&bytes) != hex) {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-}
-
-/// The SHA-256 of `bytes`, in hex.
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::Digest;
-    let digest = sha2::Sha256::digest(bytes);
-    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Points the BoxLite home `home`'s [`SHARED_IMAGE_DIRS`] at [`IMAGE_STORE`]'s, before any

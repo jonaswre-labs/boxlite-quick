@@ -47,7 +47,7 @@ async fn a_config_found_empty_in_the_image_store_is_downloaded_again() {
     pull_into_store(&IMAGE_STORE.join("emptied"), &[EMPTIED_IMAGE]);
 
     let bytes = std::fs::read(&config).unwrap();
-    assert_eq!(format!("sha256:{}", sha256_hex(&bytes)), digest);
+    assert_eq!(format!("sha256:{}", sha256_hex(&[&bytes])), digest);
 }
 
 #[tokio::test(flavor = "multi_thread")]
