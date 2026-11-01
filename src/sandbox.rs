@@ -287,7 +287,8 @@ impl Sandboxes {
     ///
     /// BoxLite 0.11 can also leave an image config in its store empty, which it then reads back
     /// on every start of that image (see [`is_config_mismatch`]). Removing the bad configs makes
-    /// the next attempt download them again (jonaswre/boxlite-quick#60).
+    /// the next attempt download them again (jonaswre/boxlite-quick#60). Both causes share one
+    /// budget of [`START_ATTEMPTS`].
     ///
     /// What BoxLite logs during an attempt is held back from [`log::STDERR`]: dropped if the Box
     /// is started again, which boxq says in a line of its own, and written unchanged otherwise.
@@ -311,9 +312,14 @@ impl Sandboxes {
                     );
                 }
                 Err(e) if attempt < START_ATTEMPTS && is_config_mismatch(&e) => {
+                    // Removed before the held lines are dropped, so a removal that fails still
+                    // shows BoxLite's report and its error.
+                    if let Err(removing) = remove_bad_configs(&self.boxlite_home()) {
+                        return Err(anyhow::Error::new(e)
+                            .context(format!("{removing:#}"))
+                            .context(failed("start", ws)));
+                    }
                     held.discard();
-                    remove_bad_configs(&self.boxlite_home())
-                        .with_context(|| failed("start", ws))?;
                     attempt += 1;
                     eprintln!(
                         "The Sandbox for {} found part of its image damaged on disk; \
