@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/free-disk
       - name: Install the Rust toolchain rust-toolchain.toml pins
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -44,4 +45,11 @@ jobs:
           test -r /dev/kvm && test -w /dev/kvm
       - name: Let BoxLite's bwrap jailer use user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - run: cargo test --locked -- --ignored
+      - run: cargo test --locked --test cli -- --ignored
+      # Built first, so a cold build doesn't use up the time limit of scripts/real-box.
+      - run: cargo test --locked --test real_box --no-run
+      # A stuck run ends at the script's time limit, with its VMs killed (jonaswre/boxlite-quick#53).
+      - run: scripts/real-box
+        env:
+          # Twice what a full run writes, so a short disk fails here rather than in a test.
+          REAL_BOX_MIN_FREE_GB: 20

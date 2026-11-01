@@ -66,6 +66,11 @@ fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
+/// The build's and the tests' output, which the script copies to the log.
+fn stdout(out: &Output) -> String {
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
 #[test]
 fn a_passing_run_saves_its_output_to_a_log_and_leaves_no_temporary_files() {
     let cargo = StubCargo::new(
@@ -96,6 +101,28 @@ fn a_run_that_cannot_create_its_directory_stops_before_the_build() {
         stderr(&out)
     );
     assert!(!stderr(&out).contains("ran"), "{}", stderr(&out));
+}
+
+#[test]
+fn a_run_with_less_free_disk_than_it_asks_for_stops_before_the_tests() {
+    let cargo = StubCargo::new("exit 0", "echo tests ran >&2");
+    let out = cargo.run_with(60, &[], &[("REAL_BOX_MIN_FREE_GB", OsStr::new("1000000"))]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        stderr(&out).contains("the tests need 1000000 GB"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!stdout(&out).contains("tests ran"), "{}", stdout(&out));
+    assert_eq!(cargo.temporary_files(), 0);
+}
+
+#[test]
+fn a_run_with_the_free_disk_it_asks_for_runs_the_tests() {
+    let cargo = StubCargo::new("exit 0", "echo tests ran >&2");
+    let out = cargo.run_with(60, &[], &[("REAL_BOX_MIN_FREE_GB", OsStr::new("0"))]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("tests ran"), "{}", stdout(&out));
 }
 
 #[test]
