@@ -26,13 +26,11 @@ impl<W: Write> Log<W> {
     }
 
     /// Holds what is written until the returned [`Hold`] ends. The hold is on the whole log, not
-    /// on one task, since BoxLite logs a start from tasks of its own; so only one may be taken at
-    /// a time.
+    /// on one task, since BoxLite logs a start from tasks of its own. `boxq` starts one Box at a
+    /// time; where a process starts several at once, as the real-Box tests do, their holds share
+    /// what is held, and the first to end writes or discards it for all.
     pub fn hold(&self) -> Hold<'_, W> {
-        let mut state = self.state();
-        debug_assert!(state.held.is_none(), "the log is already held");
-        state.held = Some(Vec::new());
-        drop(state);
+        self.state().held.get_or_insert_with(Vec::new);
         Hold { log: self }
     }
 

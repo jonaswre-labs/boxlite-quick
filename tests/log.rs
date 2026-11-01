@@ -70,3 +70,23 @@ fn events_held_for_an_attempt_that_is_not_discarded_are_written_unchanged_once_i
          ERROR log: Box failed. Diagnostic files preserved\n"
     );
 }
+
+#[test]
+fn a_hold_taken_while_another_is_held_loses_nothing_the_first_held() {
+    let out = Out::default();
+    let log = Arc::new(Log::new(out.clone()));
+
+    logging_to(&log, || {
+        let first = log.hold();
+        tracing::error!("from the first start");
+        let second = log.hold();
+        tracing::error!("from the second start");
+        drop(first);
+        second.discard();
+    });
+
+    assert_eq!(
+        out.text(),
+        "ERROR log: from the first start\nERROR log: from the second start\n"
+    );
+}
