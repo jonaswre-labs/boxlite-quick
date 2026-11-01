@@ -5,7 +5,9 @@
 #
 # The build and the tests share one time limit, REAL_BOX_TIME_LIMIT seconds (default 540), so the
 # command ends before an agent's 10-minute limit on one command. The output is saved to a log
-# under target/real-box/.
+# under target/real-box/. With REAL_BOX_MIN_FREE_GB set, the tests run only if the run's
+# directory has that much free disk after the build: a full run needs about 10 GB, and a disk
+# that fills up fails tests in ways that look like boxq's bugs (jonaswre/boxlite-quick#53).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -68,5 +70,12 @@ step() {
 }
 
 step "the build" "the build failed" cargo test --locked --test real_box --no-run
+if [[ -n ${REAL_BOX_MIN_FREE_GB:-} ]]; then
+  free=$(($(df --output=avail -k "$run_dir" | tail -1) / 1024 / 1024))
+  if ((free < REAL_BOX_MIN_FREE_GB)); then
+    echo "real-box: only $free GB is free under $run_dir; the tests need $REAL_BOX_MIN_FREE_GB GB" >&2
+    exit 1
+  fi
+fi
 step "the tests" "a test failed" cargo test --locked --test real_box -- --ignored "$@"
 echo "real-box: passed in $SECONDS s; the output is in $log" >&2

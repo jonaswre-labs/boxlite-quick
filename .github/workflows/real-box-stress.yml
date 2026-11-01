@@ -52,6 +52,7 @@ jobs:
         job: ${{ fromJSON(needs.build.outputs.jobs) }}
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/free-disk
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
@@ -72,6 +73,8 @@ jobs:
         env:
           BOXQ_LOG: ${{ inputs.log }}
           ARGS: ${{ inputs.args }}
+          # Twice what a full run writes, so a short disk fails here rather than in a test.
+          REAL_BOX_MIN_FREE_GB: 20
         run: |
           mkdir -p logs
           failed=0

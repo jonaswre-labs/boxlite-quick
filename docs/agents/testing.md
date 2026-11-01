@@ -10,7 +10,9 @@ scripts/real-box [libtest args]   # e.g. scripts/real-box egress:: auth::
 
 It builds the tests, then runs `cargo test --locked --test real_box -- --ignored [libtest args]` at the default thread count. The arguments are test filters such as `egress::`, or `--skip` and `--exact`. The build and the tests share one time limit of 540 s (`REAL_BOX_TIME_LIMIT` seconds). The output also goes to `target/real-box/<timestamp>.log`.
 
-The last line, starting `real-box:`, says what happened. The exit status is 0 if every test passed. It is non-zero if the build failed, a test failed or the time limit was hit (124, or 137 if a test had to be killed). After the time limit, the script kills the VMs that stopped tests left running and removes their homes. A cold build can use up the time limit. If it does, run the script again: the build carries on from where it stopped.
+A full run writes about 10 GB to its temporary directory. With `REAL_BOX_MIN_FREE_GB` set, the script runs the tests only if that many GB are free there after the build. On a fuller disk, tests fail in ways that look like boxq's bugs, such as `No space left on device` from `mke2fs`, and then the run can hang (jonaswre/boxlite-quick#53).
+
+The last line, starting `real-box:`, says what happened. The exit status is 0 if every test passed. It is non-zero if the build failed, there wasn't enough free disk (1), a test failed or the time limit was hit (124, or 137 if a test had to be killed). After the time limit, the script kills the VMs that stopped tests left running and removes their homes. A cold build can use up the time limit. If it does, run the script again: the build carries on from where it stopped.
 
 ## What to run
 
@@ -42,7 +44,7 @@ Each of the two `base_image::` tests takes about 2 minutes. The cold-start one d
 
 ## CI
 
-CI's `real-box` job runs the full suite, the Base Image tests included, on every push.
+CI's `real-box` job runs the full suite, the Base Image tests included, on every push. It builds the tests, then runs `scripts/real-box` with `REAL_BOX_MIN_FREE_GB=20`, so a stuck run ends at the time limit with its VMs killed. A runner can have as little as 10 GB of free disk. So before the build, both this job and `real-box-stress.yml` delete the runner's toolchains boxq doesn't use (`.github/actions/free-disk`), which frees about 32 GB. The job's log shows `df -h /` before and after.
 
 ## A failure only CI shows
 

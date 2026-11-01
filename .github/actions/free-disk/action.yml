@@ -1,0 +1,25 @@
+name: Free disk
+description: Deletes the hosted runner's preinstalled toolchains boxq doesn't use
+
+# A full real-Box run writes about 10 GB to its temp directory, and some runners have only about
+# 10 GB free (jonaswre/boxlite-quick#53). These are the toolchains of 1 GB or more on
+# ubuntu-24.04; measured on 2026-11-01, they free about 32 GB in a few seconds. The smaller ones
+# add little, and Docker's images take 14 s for 2 GB.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        df -h /
+        avail() { df --output=avail -BM / | tail -1 | tr -dc 0-9; }
+        # Android SDK 11 GB, .NET 6 GB, GHC 4 GB, Swift 4 GB, the Python tool cache, Java,
+        # CodeQL and PowerShell 1.5 GB each, Miniconda and Julia 1 GB each.
+        for dir in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup /usr/share/swift \
+          /opt/hostedtoolcache/Python /usr/lib/jvm /opt/hostedtoolcache/CodeQL \
+          /usr/local/share/powershell /usr/share/miniconda /usr/local/julia*; do
+          [[ -e $dir ]] || continue
+          before=$(avail)
+          sudo rm -rf "$dir"
+          echo "freed $(($(avail) - before)) MB: $dir"
+        done
+        df -h /
