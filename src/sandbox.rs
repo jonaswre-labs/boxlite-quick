@@ -13,11 +13,15 @@ use anyhow::Context;
 use boxlite::runtime::options::{
     BoxOptions, NetworkMode, NetworkSpec, OutboundNetworkConfig, RootfsSpec, VolumeSpec,
 };
-use boxlite::{BoxCommand, BoxStatus, GuestSession, LiteBox};
+use boxlite::{BoxCommand, BoxStatus, BoxliteError, GuestSession, LiteBox};
 use boxlite_shared::BoxTransport;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::UnboundedReceiver;
+
+/// How many times `up` tries to start a Box whose start fails with a transport error
+/// (see [`Sandboxes::start`]).
+const START_ATTEMPTS: u32 = 3;
 
 /// Every Sandbox under one boxq home.
 pub struct Sandboxes {
@@ -246,9 +250,7 @@ impl Sandboxes {
             .await
             .with_context(|| failed("create", ws))?;
         if status(&b, ws).await? != BoxStatus::Running {
-            // A VM leaked by an earlier stop must never share the disk with this one.
-            reap_box(&self.boxlite_home(), b.id().as_ref())?;
-            b.start().await.with_context(|| failed("start", ws))?;
+            self.start(&b, ws).await?;
         }
         // The Global Config or an Egress Approval may have changed since the Box was created.
         b.network()
@@ -269,6 +271,27 @@ impl Sandboxes {
             auth_changed,
             setup: record.setup,
         })
+    }
+
+    /// Starts the Workspace's Box `b`, trying again if BoxLite reports a transport error.
+    ///
+    /// BoxLite 0.11 can tell the host a Box is ready before libkrun listens on its `box.sock`:
+    /// libkrun binds the socket on a thread of its own, which nothing orders before it passes on
+    /// the guest's ready signal. Where creating the socket file is slow, as on GitHub's runners
+    /// under the real-Box tests, the host's first connection finds no socket, and the start fails
+    /// with "gRPC transport error: transport error" (jonaswre/boxlite-quick#50). BoxLite has
+    /// stopped that Box and marked it failed, so starting it again boots it afresh.
+    async fn start(&self, b: &LiteBox, ws: &Workspace) -> anyhow::Result<()> {
+        let mut attempt = 1;
+        loop {
+            // A VM leaked by an earlier stop, or by a failed start, must never share the disk
+            // with this one.
+            reap_box(&self.boxlite_home(), b.id().as_ref())?;
+            match b.start().await {
+                Err(BoxliteError::RpcTransport(_)) if attempt < START_ATTEMPTS => attempt += 1,
+                started => return started.with_context(|| failed("start", ws)),
+            }
+        }
     }
 
     /// Records how far the Workspace's Setup Hooks got, keeping the rest of its record.

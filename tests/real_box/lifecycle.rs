@@ -72,6 +72,47 @@ fn shims(home: &Path) -> anyhow::Result<Vec<PathBuf>> {
     Ok(found)
 }
 
+/// BoxLite 0.11 can tell the host a Box is ready before libkrun listens on its `box.sock`, so the
+/// start fails with "gRPC transport error: transport error" (jonaswre/boxlite-quick#50). A file
+/// left where libkrun is about to listen stands in for the listener that isn't there yet.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "boots a real Box; needs KVM"]
+async fn a_box_not_yet_listening_when_it_says_it_is_ready_is_started_again() {
+    let f = Fixture::new();
+    let blocked = block_box_sock(&f.sandboxes.boxlite_home());
+
+    let up = f.up(IMAGE).await;
+
+    assert!(
+        blocked.join().unwrap(),
+        "box.sock was not blocked before libkrun listened"
+    );
+    let ran = sh(&up.target, "echo hello").await.unwrap();
+    assert_eq!(ran, ("hello\n".into(), 0));
+    assert_eq!(shims(&f.sandboxes.boxlite_home()).unwrap().len(), 1);
+}
+
+/// Waits for the first Box under `home` to enter its VM, then creates a plain file where libkrun
+/// is about to listen on `box.sock`. Joins to whether the file went in before libkrun's socket.
+fn block_box_sock(home: &Path) -> std::thread::JoinHandle<bool> {
+    let boxes = home.join("boxes");
+    std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            if let Some(Ok(b)) = std::fs::read_dir(&boxes).ok().and_then(|mut d| d.next()) {
+                // The shim prints this once libkrun has checked the socket paths are free.
+                let stderr = std::fs::read_to_string(b.path().join("shim.stderr"));
+                if stderr.is_ok_and(|s| s.contains("krun_start_enter")) {
+                    let sock = b.path().join("sockets/box.sock");
+                    return std::fs::File::create_new(sock).is_ok();
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        false
+    })
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "boots a real Box; needs KVM"]
 async fn a_removed_sandbox_is_created_afresh() {
