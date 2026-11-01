@@ -5,6 +5,7 @@ use crate::Workspace;
 use crate::auth::Auth;
 use crate::config::read_or_default;
 use crate::egress::Policy;
+use crate::image_store::{is_config_mismatch, remove_bad_configs};
 use crate::log;
 use crate::reap::reap_box;
 use crate::runtime;
@@ -20,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::UnboundedReceiver;
 
-/// How many times `up` tries to start a Box whose start fails with a transport error
-/// (see [`Sandboxes::start`]).
+/// How many times `up` tries to start a Box whose start fails with a transport error, or on a
+/// damaged image config (see [`Sandboxes::start`]).
 const START_ATTEMPTS: u32 = 3;
 
 /// Every Sandbox under one boxq home.
@@ -274,7 +275,8 @@ impl Sandboxes {
         })
     }
 
-    /// Starts the Workspace's Box `b`, trying again if BoxLite reports a transport error.
+    /// Starts the Workspace's Box `b`, trying again if BoxLite reports a transport error, or an
+    /// image config whose bytes don't match its digest.
     ///
     /// BoxLite 0.11 can tell the host a Box is ready before libkrun listens on its `box.sock`:
     /// libkrun binds the socket on a thread of its own, which nothing orders before it passes on
@@ -282,6 +284,10 @@ impl Sandboxes {
     /// under the real-Box tests, the host's first connection finds no socket, and the start fails
     /// with "gRPC transport error: transport error" (jonaswre/boxlite-quick#50). BoxLite has
     /// stopped that Box and marked it failed, so starting it again boots it afresh.
+    ///
+    /// BoxLite 0.11 can also leave an image config in its store empty, which it then reads back
+    /// on every start of that image (see [`is_config_mismatch`]). Removing the bad configs makes
+    /// the next attempt download them again (jonaswre/boxlite-quick#60).
     ///
     /// What BoxLite logs during an attempt is held back from [`log::STDERR`]: dropped if the Box
     /// is started again, which boxq says in a line of its own, and written unchanged otherwise.
@@ -301,6 +307,17 @@ impl Sandboxes {
                     eprintln!(
                         "The Sandbox for {} wasn't ready to connect; starting it again \
                          (attempt {attempt} of {START_ATTEMPTS}).",
+                        ws.path().display()
+                    );
+                }
+                Err(e) if attempt < START_ATTEMPTS && is_config_mismatch(&e) => {
+                    held.discard();
+                    remove_bad_configs(&self.boxlite_home())
+                        .with_context(|| failed("start", ws))?;
+                    attempt += 1;
+                    eprintln!(
+                        "The Sandbox for {} found part of its image damaged on disk; \
+                         downloading it again (attempt {attempt} of {START_ATTEMPTS}).",
                         ws.path().display()
                     );
                 }
