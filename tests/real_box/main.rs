@@ -105,6 +105,7 @@ impl Fixture {
     /// A fixture whose BoxLite home starts empty, as on a first run, so its Boxes pull their
     /// images from the registry.
     fn cold() -> Self {
+        log_boxlite();
         let home = tempfile::tempdir().unwrap();
         let mut f = Self {
             sandboxes: Sandboxes::new(home.path()),
@@ -140,6 +141,24 @@ impl Fixture {
     fn runtime(&self) -> BoxliteRuntime {
         open_runtime(&self.sandboxes.boxlite_home())
     }
+}
+
+/// Prints BoxLite's `error` events, or what `BOXQ_LOG` selects, in the output of the test that
+/// caused them, as `boxq` prints them on stderr. BoxLite's error is often only a short sentence,
+/// such as "gRPC transport error: transport error"; the step that failed, and why, is in its log
+/// (jonaswre/boxlite-quick#50). The first fixture installs it; later calls do nothing.
+fn log_boxlite() {
+    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::filter::LevelFilter;
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::ERROR.into())
+        .with_env_var("BOXQ_LOG")
+        .from_env_lossy();
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_test_writer()
+        .with_ansi(false)
+        .try_init();
 }
 
 /// A BoxLite runtime on the BoxLite home `home`.

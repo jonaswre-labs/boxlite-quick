@@ -16,6 +16,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install protoc, which BoxLite's build needs
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: No tagged debug instrumentation is left in
+        run: "! git grep -nE '\\[DEBUG-[0-9A-Za-z]+\\]'"
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked

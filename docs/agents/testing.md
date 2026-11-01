@@ -43,3 +43,24 @@ Each of the two `base_image::` tests takes about 2 minutes. The cold-start one d
 ## CI
 
 CI's `real-box` job runs the full suite, the Base Image tests included, on every push.
+
+## A failure only CI shows
+
+A failing real-Box test prints BoxLite's `error` events: the failed task (`task=guest_init`) and any crash report. BoxLite's own error is often only a sentence such as `gRPC transport error: transport error`. `BOXQ_LOG=boxlite=debug,tonic=trace` prints more, but to failing tests only.
+
+Loading this host didn't reproduce jonaswre/boxlite-quick#50: starving the CPU (`taskset -c 0`, many test threads) only gives `timed out after 30s waiting for it to become ready`. GitHub's runners differ in disk latency and free disk, so build the loop for a CI-only failure on the runners:
+
+```sh
+gh workflow run real-box-stress.yml -f jobs=20 -f runs=3 [-f args='lifecycle::'] [-f log='boxlite=debug'] [-f strace=true]
+gh run download <run-id> -n logs-<job> -D <dir>   # works once that job ends
+```
+
+`gh run view --log` waits for the whole run, but each job's artifact can be downloaded as soon as that job ends. `strace=true` records bind, listen and connect calls with their errno, which is how jonaswre/boxlite-quick#50's missing `box.sock` was found.
+
+BoxLite's guest agent and its vendored libkrun aren't in `~/.cargo/registry`. Read them at the pinned release:
+
+```sh
+gh api 'repos/boxlite-ai/boxlite/contents/src/guest/src/main.rs?ref=v0.11.0' --jq .content | base64 -d
+gh api 'repos/boxlite-ai/boxlite/contents/src/deps/libkrun-sys/vendor?ref=v0.11.0' --jq '.[] | select(.name == "libkrun") | .sha'
+gh api 'repos/boxlite-ai/libkrun/contents/src/devices/src/virtio/vsock/muxer.rs?ref=<sha>' --jq .content | base64 -d
+```
