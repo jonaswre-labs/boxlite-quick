@@ -6,6 +6,7 @@ pub mod claude_config;
 pub mod config;
 mod digest;
 pub mod egress;
+pub mod log;
 pub mod reap;
 pub mod runtime;
 pub mod sandbox;

@@ -5,6 +5,7 @@ use crate::Workspace;
 use crate::auth::Auth;
 use crate::config::read_or_default;
 use crate::egress::Policy;
+use crate::log;
 use crate::reap::reap_box;
 use crate::runtime;
 use crate::setup::Setup;
@@ -281,14 +282,28 @@ impl Sandboxes {
     /// under the real-Box tests, the host's first connection finds no socket, and the start fails
     /// with "gRPC transport error: transport error" (jonaswre/boxlite-quick#50). BoxLite has
     /// stopped that Box and marked it failed, so starting it again boots it afresh.
+    ///
+    /// What BoxLite logs during an attempt is held back from [`log::STDERR`]: dropped if the Box
+    /// is started again, which boxq says in a line of its own, and written unchanged otherwise.
+    /// So a start that recovers shows no failure (jonaswre/boxlite-quick#56). With `BOXQ_LOG`
+    /// set, `boxq` writes BoxLite's events straight to stderr, so every attempt shows.
     async fn start(&self, b: &LiteBox, ws: &Workspace) -> anyhow::Result<()> {
         let mut attempt = 1;
         loop {
             // A VM leaked by an earlier stop, or by a failed start, must never share the disk
             // with this one.
             reap_box(&self.boxlite_home(), b.id().as_ref())?;
+            let held = log::STDERR.hold();
             match b.start().await {
-                Err(BoxliteError::RpcTransport(_)) if attempt < START_ATTEMPTS => attempt += 1,
+                Err(BoxliteError::RpcTransport(_)) if attempt < START_ATTEMPTS => {
+                    held.discard();
+                    attempt += 1;
+                    eprintln!(
+                        "The Sandbox for {} wasn't ready to connect; starting it again \
+                         (attempt {attempt} of {START_ATTEMPTS}).",
+                        ws.path().display()
+                    );
+                }
                 started => return started.with_context(|| failed("start", ws)),
             }
         }

@@ -157,8 +157,8 @@ impl BaseUrl {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.'),
             "base URL {url:?} must name a hostname or IPv4 address"
         );
-        // BoxLite 0.11 injects secrets only on port 443, and how to reach any other port is
-        // still undecided (the map's "Plain-HTTP or non-443 base URLs").
+        // BoxLite 0.11 injects secrets only on port 443, and the map (jonaswre/boxlite-quick#1)
+        // puts other ports out of scope ("Plain-HTTP or non-443 base URLs").
         anyhow::ensure!(
             port.is_none(),
             "base URL {url:?} must not name a port: \

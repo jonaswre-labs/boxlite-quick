@@ -464,7 +464,8 @@ impl Terminal {
     }
 
     /// Waits for `text` in the terminal's output, panicking with what it saw after `wait`.
-    fn expect_within(&mut self, text: &str, wait: std::time::Duration) {
+    /// Returns what came before `text`.
+    fn expect_within(&mut self, text: &str, wait: std::time::Duration) -> String {
         let deadline = std::time::Instant::now() + wait;
         while !self.seen.contains(text) {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
@@ -474,8 +475,9 @@ impl Terminal {
             }
         }
         // Later expectations only look at what comes after.
-        let at = self.seen.find(text).unwrap() + text.len();
-        self.seen.drain(..at);
+        let at = self.seen.find(text).unwrap();
+        let before = self.seen.drain(..at + text.len()).collect::<String>();
+        before[..at].into()
     }
 
     /// Waits for a login shell's prompt in `ws`: Alpine's `/etc/profile` sets it to `host:cwd# `.

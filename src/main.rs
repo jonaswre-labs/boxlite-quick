@@ -4,6 +4,7 @@ use boxq::claude;
 use boxq::claude_config::ClaudeConfig;
 use boxq::config::Config;
 use boxq::egress::{Approvals, Policy};
+use boxq::log;
 use boxq::sandbox::{NoSandbox, Sandboxes, Up};
 use boxq::session;
 use boxq::setup::{self, Failed};
@@ -13,6 +14,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
 /// Run Claude Code against a Workspace inside an isolated Sandbox.
 #[derive(Parser)]
@@ -116,14 +118,24 @@ async fn main() -> anyhow::Result<()> {
 /// Prints BoxLite's `error` events on stderr, or what `BOXQ_LOG` (an `EnvFilter`) selects. BoxLite
 /// returns only a short sentence for a host failure and logs the full report, with its paths and
 /// fix commands, at `error` (jonaswre/boxlite-quick#33).
+///
+/// By default they go through [`log::STDERR`], so what a Box start attempt logs is dropped if
+/// boxq starts the Box again (see `Sandboxes::start`). With `BOXQ_LOG` set they go straight to
+/// stderr: whoever asked for more wants every attempt, and wants it as it happens, even if a
+/// slow start is interrupted.
 fn log_to_stderr() {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::ERROR.into())
         .with_env_var("BOXQ_LOG")
         .from_env_lossy();
+    let writer = if std::env::var_os("BOXQ_LOG").is_some() {
+        BoxMakeWriter::new(std::io::stderr)
+    } else {
+        BoxMakeWriter::new(|| &*log::STDERR)
+    };
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_writer(std::io::stderr)
+        .with_writer(writer)
         .with_ansi(std::io::stderr().is_terminal())
         .without_time()
         .init();
