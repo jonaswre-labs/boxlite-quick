@@ -1,0 +1,94 @@
+name: Real-Box stress
+
+# Runs the real-Box tests many times on GitHub's runners, for a failure only CI shows
+# (jonaswre/boxlite-quick#50). docs/agents/testing.md says when and how. A pull request that edits
+# this file runs it small, so the change is proven before it reaches main, where dispatch finds it.
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Runners, each running the tests `runs` times
+        default: "10"
+      runs:
+        description: Runs per runner
+        default: "3"
+      args:
+        description: libtest arguments for scripts/real-box, such as `lifecycle::` or `--skip base_image::`
+        default: ""
+      log:
+        description: BOXQ_LOG for the tests, such as `boxlite=debug,tonic=trace`; empty prints BoxLite's errors
+        default: ""
+      strace:
+        description: Record each run's bind, listen and connect calls
+        type: boolean
+        default: false
+  pull_request:
+    paths: [.github/workflows/real-box-stress.yml]
+
+jobs:
+  # Warms the cache the runners build from, so each doesn't build BoxLite cold.
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      jobs: ${{ steps.jobs.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: real-box-stress
+      - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - run: cargo test --locked --test real_box --no-run
+      - id: jobs
+        run: echo "jobs=$(seq -s, 1 "${{ inputs.jobs || 2 }}" | sed 's/.*/[&]/')" >> "$GITHUB_OUTPUT"
+
+  stress:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        job: ${{ fromJSON(needs.build.outputs.jobs) }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: real-box-stress
+          save-if: false
+      - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace
+      - name: Give the runner user /dev/kvm
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Runner
+        run: nproc; free -m; df -h /tmp
+      - name: Run the real-Box tests
+        env:
+          BOXQ_LOG: ${{ inputs.log }}
+          ARGS: ${{ inputs.args }}
+        run: |
+          mkdir -p logs
+          failed=0
+          for i in $(seq "${{ inputs.runs || 1 }}"); do
+            trace=()
+            if [[ "${{ inputs.strace }}" == true ]]; then
+              trace=(strace -f --seccomp-bpf -qq -tt -s 160 -e trace=bind,listen,connect
+                -e signal=none -o "logs/strace$i.log")
+            fi
+            # shellcheck disable=SC2086
+            "${trace[@]}" scripts/real-box $ARGS > "logs/run$i.log" 2>&1 || failed=1
+            echo "run $i: $(tail -1 "logs/run$i.log")"
+            grep -E "^test .* FAILED$" "logs/run$i.log" || true
+          done
+          exit $failed
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.job }}
+          path: logs/
