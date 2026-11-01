@@ -1,5 +1,6 @@
-//! Creating, reattaching, stopping, removing and listing Sandboxes, and waiting on the BoxLite
-//! runtime: `src/sandbox.rs`, `src/runtime.rs` and `src/reap.rs`.
+//! Creating, reattaching, stopping, removing and listing Sandboxes, waiting on the BoxLite
+//! runtime, and what a start that is tried again prints: `src/sandbox.rs`, `src/runtime.rs`,
+//! `src/reap.rs` and `src/log.rs`.
 //!
 //! Where a test needs another boxq process holding the BoxLite home, a second runtime in this
 //! process stands in for it: BoxLite's home lock is a `flock` on a file each runtime opens for
@@ -90,6 +91,37 @@ async fn a_box_not_yet_listening_when_it_says_it_is_ready_is_started_again() {
     let ran = sh(&up.target, "echo hello").await.unwrap();
     assert_eq!(ran, ("hello\n".into(), 0));
     assert_eq!(shims(&f.sandboxes.boxlite_home()).unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "boots a real Box; needs KVM"]
+async fn a_start_that_succeeds_when_tried_again_prints_only_boxqs_line_about_it() {
+    let f = Fixture::new();
+    let config = f.sandboxes.boxlite_home().join("boxq");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("config.toml"), format!("image = {IMAGE:?}\n")).unwrap();
+    let blocked = block_box_sock(&f.sandboxes.boxlite_home());
+    let ws = f.workspace.path();
+
+    let mut t = Terminal::boxq(&f, &["shell", ws.to_str().unwrap()]);
+    let wait = std::time::Duration::from_secs(120);
+    let before = t.expect_within(&format!("Created the Sandbox for {}", ws.display()), wait);
+    t.expect_prompt(&f.workspace);
+
+    assert!(
+        blocked.join().unwrap(),
+        "box.sock was not blocked before libkrun listened"
+    );
+    let retried = format!(
+        "The Sandbox for {} wasn't ready to connect; starting it again (attempt 2 of 3).\r\n",
+        ws.display()
+    );
+    assert!(before.ends_with(&retried), "no retry line in:\n{before}");
+    // Such as "Task failed: gRPC transport error" and "Box failed. Diagnostic files preserved".
+    assert!(
+        !before.contains("ERROR"),
+        "BoxLite's errors from the failed attempt were printed:\n{before}"
+    );
 }
 
 /// Waits for the first Box under `home` to enter its VM, then creates a plain file where libkrun

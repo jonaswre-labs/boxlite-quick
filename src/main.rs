@@ -4,6 +4,7 @@ use boxq::claude;
 use boxq::claude_config::ClaudeConfig;
 use boxq::config::Config;
 use boxq::egress::{Approvals, Policy};
+use boxq::log;
 use boxq::sandbox::{NoSandbox, Sandboxes, Up};
 use boxq::session;
 use boxq::setup::{self, Failed};
@@ -116,6 +117,9 @@ async fn main() -> anyhow::Result<()> {
 /// Prints BoxLite's `error` events on stderr, or what `BOXQ_LOG` (an `EnvFilter`) selects. BoxLite
 /// returns only a short sentence for a host failure and logs the full report, with its paths and
 /// fix commands, at `error` (jonaswre/boxlite-quick#33).
+///
+/// They go through [`log::STDERR`], so what a Box start attempt logs, `BOXQ_LOG`'s output
+/// included, is dropped if boxq starts the Box again (see `Sandboxes::start`).
 fn log_to_stderr() {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::ERROR.into())
@@ -123,7 +127,7 @@ fn log_to_stderr() {
         .from_env_lossy();
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_writer(std::io::stderr)
+        .with_writer(|| &*log::STDERR)
         .with_ansi(std::io::stderr().is_terminal())
         .without_time()
         .init();

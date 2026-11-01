@@ -20,7 +20,7 @@ Run the groups your change touches. Each group is one module in `tests/real_box/
 
 | group | covers |
 | --- | --- |
-| `lifecycle::` | `src/sandbox.rs`, `src/runtime.rs`, `src/reap.rs` |
+| `lifecycle::` | `src/sandbox.rs`, `src/runtime.rs`, `src/reap.rs`, `src/log.rs` |
 | `mounts::` | `src/workspace.rs` and the mounts in `src/sandbox.rs` |
 | `spec::` | `src/spec.rs` |
 | `egress::` | `src/egress.rs` |
