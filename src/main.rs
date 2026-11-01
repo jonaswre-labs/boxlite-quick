@@ -14,6 +14,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
 /// Run Claude Code against a Workspace inside an isolated Sandbox.
 #[derive(Parser)]
@@ -118,16 +119,23 @@ async fn main() -> anyhow::Result<()> {
 /// returns only a short sentence for a host failure and logs the full report, with its paths and
 /// fix commands, at `error` (jonaswre/boxlite-quick#33).
 ///
-/// They go through [`log::STDERR`], so what a Box start attempt logs, `BOXQ_LOG`'s output
-/// included, is dropped if boxq starts the Box again (see `Sandboxes::start`).
+/// By default they go through [`log::STDERR`], so what a Box start attempt logs is dropped if
+/// boxq starts the Box again (see `Sandboxes::start`). With `BOXQ_LOG` set they go straight to
+/// stderr: whoever asked for more wants every attempt, and wants it as it happens, even if a
+/// slow start is interrupted.
 fn log_to_stderr() {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::ERROR.into())
         .with_env_var("BOXQ_LOG")
         .from_env_lossy();
+    let writer = if std::env::var_os("BOXQ_LOG").is_some() {
+        BoxMakeWriter::new(std::io::stderr)
+    } else {
+        BoxMakeWriter::new(|| &*log::STDERR)
+    };
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_writer(|| &*log::STDERR)
+        .with_writer(writer)
         .with_ansi(std::io::stderr().is_terminal())
         .without_time()
         .init();

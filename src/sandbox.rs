@@ -285,8 +285,8 @@ impl Sandboxes {
     ///
     /// What BoxLite logs during an attempt is held back from [`log::STDERR`]: dropped if the Box
     /// is started again, which boxq says in a line of its own, and written unchanged otherwise.
-    /// So a start that recovers shows no failure, and `BOXQ_LOG`'s output shows only the attempt
-    /// that mattered (jonaswre/boxlite-quick#56).
+    /// So a start that recovers shows no failure (jonaswre/boxlite-quick#56). With `BOXQ_LOG`
+    /// set, `boxq` writes BoxLite's events straight to stderr, so every attempt shows.
     async fn start(&self, b: &LiteBox, ws: &Workspace) -> anyhow::Result<()> {
         let mut attempt = 1;
         loop {

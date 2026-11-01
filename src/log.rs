@@ -29,7 +29,10 @@ impl<W: Write> Log<W> {
     /// on one task, since BoxLite logs a start from tasks of its own; so only one may be taken at
     /// a time.
     pub fn hold(&self) -> Hold<'_, W> {
-        self.state().held = Some(Vec::new());
+        let mut state = self.state();
+        debug_assert!(state.held.is_none(), "the log is already held");
+        state.held = Some(Vec::new());
+        drop(state);
         Hold { log: self }
     }
 
@@ -53,7 +56,7 @@ impl<W: Write> Write for &Log<W> {
     }
 }
 
-/// What a [`Log`] holds. Dropped, it writes what it held; [`Hold::discard`] drops that instead.
+/// A hold on a [`Log`]. Dropped, it writes what it held; [`Hold::discard`] drops that instead.
 pub struct Hold<'a, W: Write> {
     log: &'a Log<W>,
 }
@@ -61,8 +64,8 @@ pub struct Hold<'a, W: Write> {
 impl<W: Write> Hold<'_, W> {
     /// Ends the hold, never writing what it held.
     pub fn discard(self) {
+        // Dropping `self` then finds nothing held, so writes nothing.
         self.log.state().held = None;
-        std::mem::forget(self);
     }
 }
 
