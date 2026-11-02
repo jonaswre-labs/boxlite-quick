@@ -1,5 +1,5 @@
 //! boxq's log of BoxLite's events on stderr, which can hold back what a Box start attempt logs
-//! until boxq knows whether it will start the Box again (jonaswre/boxlite-quick#56).
+//! until boxq knows whether it will start the Box again (jonaswre-labs/boxlite-quick#56).
 
 use std::io::Write;
 use std::sync::{LazyLock, Mutex};

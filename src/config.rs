@@ -1,5 +1,5 @@
 //! boxq's settings: the Global Config, the credentials file and the Workspace Config, merged
-//! into one validated [`Config`] (jonaswre/boxlite-quick#6, ADR 0001).
+//! into one validated [`Config`] (jonaswre-labs/boxlite-quick#6, ADR 0001).
 
 use crate::Workspace;
 use anyhow::Context;
@@ -49,7 +49,7 @@ impl Resources {
     }
 
     /// Refuses resources no Sandbox could be created with. These are sanity limits, not a
-    /// trust gate, so a Workspace Config may set resources freely (jonaswre/boxlite-quick#31).
+    /// trust gate, so a Workspace Config may set resources freely (jonaswre-labs/boxlite-quick#31).
     fn check(&self) -> anyhow::Result<()> {
         if let Some(cpus) = self.cpus {
             // The guest kernel's limit, which BoxLite otherwise checks only at creation.
@@ -157,7 +157,7 @@ impl BaseUrl {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.'),
             "base URL {url:?} must name a hostname or IPv4 address"
         );
-        // BoxLite 0.11 injects secrets only on port 443, and the map (jonaswre/boxlite-quick#1)
+        // BoxLite 0.11 injects secrets only on port 443, and the map (jonaswre-labs/boxlite-quick#1)
         // puts other ports out of scope ("Plain-HTTP or non-443 base URLs").
         anyhow::ensure!(
             port.is_none(),

@@ -26,7 +26,7 @@ tracing = "0.1.44"
 
 # BoxLite unpacks and verifies image layers with these, so every dev build (`cargo build`, `cargo
 # test`) optimizes them. Unoptimized, they took 90 s over the Base Image in the real-Box tests;
-# optimized, 19 s (jonaswre/boxlite-quick#44).
+# optimized, 19 s (jonaswre-labs/boxlite-quick#44).
 [profile.dev.package.miniz_oxide]
 opt-level = 3
 

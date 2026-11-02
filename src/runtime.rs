@@ -10,7 +10,7 @@ const POLL: Duration = Duration::from_millis(100);
 /// The one place boxq opens the BoxLite runtime, which takes the `home` lock.
 ///
 /// Callers hold the runtime only long enough to find, create, start, stop, remove or list a
-/// Box, then drop it before any long-lived work (jonaswre/boxlite-quick#8). Another boxq doing
+/// Box, then drop it before any long-lived work (jonaswre-labs/boxlite-quick#8). Another boxq doing
 /// the same holds it for seconds at most (a cold create), so a busy lock is waited out, not
 /// reported.
 pub fn open(home: &Path) -> anyhow::Result<BoxliteRuntime> {

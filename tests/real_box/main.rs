@@ -5,7 +5,7 @@
 //! group. Each module's doc says which code it covers.
 //!
 //! boxq execs through the Box's own `box.sock` so no runtime (and no `BOXLITE_HOME` lock) is
-//! held during a session (jonaswre/boxlite-quick#8). That leans on BoxLite internals: the
+//! held during a session (jonaswre-labs/boxlite-quick#8). That leans on BoxLite internals: the
 //! socket layout, the `BOXLITE_EXECUTOR` env protocol and the container-id directory. These
 //! tests drive boxq's own exec target, so any BoxLite bump must pass them.
 
@@ -40,7 +40,7 @@ use tokio_util::sync::CancellationToken;
 
 // Docker Hub images come through Google's mirror: every home asks the registry for each tag it
 // uses, which in one run is more often than Docker Hub's anonymous limit allows
-// (jonaswre/boxlite-quick#43).
+// (jonaswre-labs/boxlite-quick#43).
 
 /// Small and quick to pull; boxq's real image only matters to the Agent.
 const IMAGE: &str = "mirror.gcr.io/library/alpine:3";
@@ -148,7 +148,7 @@ impl Fixture {
 /// Prints BoxLite's `error` events, or what `BOXQ_LOG` selects, in the output of the test that
 /// caused them, as `boxq` prints them on stderr. BoxLite's error is often only a short sentence,
 /// such as "gRPC transport error: transport error"; the step that failed, and why, is in its log
-/// (jonaswre/boxlite-quick#50). The first fixture installs it; later calls do nothing.
+/// (jonaswre-labs/boxlite-quick#50). The first fixture installs it; later calls do nothing.
 fn log_boxlite() {
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::filter::LevelFilter;
@@ -204,7 +204,7 @@ impl Drop for Fixture {
 const SHARED_IMAGE_DIRS: [&str; 4] = ["layers", "manifests", "configs", "extracted"];
 
 /// Where a run's homes share their [`SHARED_IMAGE_DIRS`], so the run downloads each image once
-/// rather than once per home (jonaswre/boxlite-quick#44). It's removed when the tests exit.
+/// rather than once per home (jonaswre-labs/boxlite-quick#44). It's removed when the tests exit.
 static IMAGE_STORE: LazyLock<PathBuf> = LazyLock::new(|| {
     let store = tempfile::tempdir().unwrap().keep();
     extern "C" fn remove_store() {

@@ -1,7 +1,7 @@
 name: Base Image
 
 # Builds boxq's Base Image, boots a real Box from the exact build and publishes it only if
-# Claude Code starts there with no prompts (jonaswre/boxlite-quick#29). No PR is opened: one
+# Claude Code starts there with no prompts (jonaswre-labs/boxlite-quick#29). No PR is opened: one
 # opened with GITHUB_TOKEN wouldn't trigger CI, so the pin in src/spec.rs is bumped by hand.
 on:
   push:

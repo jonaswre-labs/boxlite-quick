@@ -9,9 +9,9 @@ use std::path::Path;
 ///
 /// BoxLite 0.11 renames a config it has downloaded into place without flushing it, then reads it
 /// straight back. If the write is still queued in tokio's blocking pool, BoxLite reads an empty
-/// file (jonaswre/boxlite-quick#54). If the write never lands, the empty file stays, and every
+/// file (jonaswre-labs/boxlite-quick#54). If the write never lands, the empty file stays, and every
 /// later pull of that image fails the same way, since BoxLite trusts any config that exists
-/// (jonaswre/boxlite-quick#60). [`remove_bad_configs`] makes the next pull download it again.
+/// (jonaswre-labs/boxlite-quick#60). [`remove_bad_configs`] makes the next pull download it again.
 /// BoxLite says so only in the message of a `Storage` error.
 pub fn is_config_mismatch(e: &BoxliteError) -> bool {
     matches!(e, BoxliteError::Storage(msg) if msg.contains("image config digest mismatch"))

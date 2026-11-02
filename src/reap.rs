@@ -18,7 +18,7 @@ const KILL_GRACE: Duration = Duration::from_secs(1);
 ///
 /// BoxLite 0.11 reaps a detached Box's VM only through its cgroup, so wherever that cgroup can't
 /// be created (system services, SSH sessions, CI, WSL) `stop` and `rm` leave the VM running
-/// (jonaswre/boxlite-quick#19). Call this after `stop`, after `rm`, and before every start, so a
+/// (jonaswre-labs/boxlite-quick#19). Call this after `stop`, after `rm`, and before every start, so a
 /// leaked VM never shares a disk with a new one. Remove it once a BoxLite release reaps the tree
 /// itself (boxlite-ai/boxlite#1240) and the real-Box test passes without it.
 pub fn reap_box(home: &Path, box_id: &str) -> anyhow::Result<()> {

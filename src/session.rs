@@ -1,5 +1,5 @@
 //! Interactive sessions in a Sandbox: a TTY exec through the lock-free `ExecTarget`, driven from
-//! boxq's own terminal (jonaswre/boxlite-quick#15).
+//! boxq's own terminal (jonaswre-labs/boxlite-quick#15).
 //!
 //! The terminal handling is adapted from boxlite-cli 0.11.0's `terminal/mod.rs` (Apache-2.0). It
 //! drives the raw `ExecComponents` channels, because `Execution`'s constructor is `pub(crate)`.

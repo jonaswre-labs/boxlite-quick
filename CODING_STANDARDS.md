@@ -16,7 +16,7 @@ Judgement calls a reviewer checks by reading. Anything a tool can check belongs 
 
 ## Doc comments
 
-- Where a decision came from an issue, cite it as `jonaswre/boxlite-quick#N` (not `#N`, nor the repo's old name `jonaswre/boxlite`).
+- Where a decision came from an issue, cite it as `jonaswre-labs/boxlite-quick#N` (not `#N`, nor the repo's old name `jonaswre/boxlite`).
 
 ## Tests
 

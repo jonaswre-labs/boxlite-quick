@@ -1,5 +1,5 @@
 //! The Sandbox lifecycle: one persistent Box per Workspace, found by its derived name
-//! (jonaswre/boxlite-quick#10).
+//! (jonaswre-labs/boxlite-quick#10).
 
 use crate::Workspace;
 use crate::auth::Auth;
@@ -282,17 +282,17 @@ impl Sandboxes {
     /// libkrun binds the socket on a thread of its own, which nothing orders before it passes on
     /// the guest's ready signal. Where creating the socket file is slow, as on GitHub's runners
     /// under the real-Box tests, the host's first connection finds no socket, and the start fails
-    /// with "gRPC transport error: transport error" (jonaswre/boxlite-quick#50). BoxLite has
+    /// with "gRPC transport error: transport error" (jonaswre-labs/boxlite-quick#50). BoxLite has
     /// stopped that Box and marked it failed, so starting it again boots it afresh.
     ///
     /// BoxLite 0.11 can also leave an image config in its store empty, which it then reads back
     /// on every start of that image (see [`is_config_mismatch`]). Removing the bad configs makes
-    /// the next attempt download them again (jonaswre/boxlite-quick#60). Both causes share one
+    /// the next attempt download them again (jonaswre-labs/boxlite-quick#60). Both causes share one
     /// budget of [`START_ATTEMPTS`].
     ///
     /// What BoxLite logs during an attempt is held back from [`log::STDERR`]: dropped if the Box
     /// is started again, which boxq says in a line of its own, and written unchanged otherwise.
-    /// So a start that recovers shows no failure (jonaswre/boxlite-quick#56). With `BOXQ_LOG`
+    /// So a start that recovers shows no failure (jonaswre-labs/boxlite-quick#56). With `BOXQ_LOG`
     /// set and not empty, `boxq` writes BoxLite's events straight to stderr, so every attempt
     /// shows.
     async fn start(&self, b: &LiteBox, ws: &Workspace) -> anyhow::Result<()> {

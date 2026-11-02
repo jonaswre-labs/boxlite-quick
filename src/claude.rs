@@ -1,5 +1,5 @@
 //! Claude Code in the Sandbox. boxq never installs it: it comes with the image, as with the
-//! Base Image (jonaswre/boxlite-quick#29), so any image with `claude` behaves the same.
+//! Base Image (jonaswre-labs/boxlite-quick#29), so any image with `claude` behaves the same.
 
 use crate::Workspace;
 use crate::sandbox::{ExecTarget, OutputChunks};

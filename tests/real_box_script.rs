@@ -1,4 +1,4 @@
-//! `scripts/real-box`, the one command that runs the real-Box tests (jonaswre/boxlite-quick#42).
+//! `scripts/real-box`, the one command that runs the real-Box tests (jonaswre-labs/boxlite-quick#42).
 //! A stub `cargo` stands in for the build and the tests, so no Box boots here.
 
 use std::ffi::OsStr;
