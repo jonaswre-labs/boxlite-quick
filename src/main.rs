@@ -120,15 +120,16 @@ async fn main() -> anyhow::Result<()> {
 /// fix commands, at `error` (jonaswre/boxlite-quick#33).
 ///
 /// By default they go through [`log::STDERR`], so what a Box start attempt logs is dropped if
-/// boxq starts the Box again (see `Sandboxes::start`). With `BOXQ_LOG` set they go straight to
-/// stderr: whoever asked for more wants every attempt, and wants it as it happens, even if a
-/// slow start is interrupted.
+/// boxq starts the Box again (see `Sandboxes::start`). With `BOXQ_LOG` set, and not empty, they go
+/// straight to stderr: whoever asked for more wants every attempt, and wants it as it happens, even
+/// if a slow start is interrupted. An empty `BOXQ_LOG`, as a workflow input left blank gives, asks
+/// for nothing more.
 fn log_to_stderr() {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::ERROR.into())
         .with_env_var("BOXQ_LOG")
         .from_env_lossy();
-    let writer = if std::env::var_os("BOXQ_LOG").is_some() {
+    let writer = if std::env::var_os("BOXQ_LOG").is_some_and(|v| !v.is_empty()) {
         BoxMakeWriter::new(std::io::stderr)
     } else {
         BoxMakeWriter::new(|| &*log::STDERR)
