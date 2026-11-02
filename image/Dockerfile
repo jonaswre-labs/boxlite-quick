@@ -1,5 +1,5 @@
 # boxq's Base Image: a generic core with Claude Code preinstalled, and no boxq config, so any
-# image with `claude` on the PATH behaves the same (jonaswre-labs/boxlite-quick#29). Language
+# image with `claude` on the PATH behaves the same (jonaswre/boxlite-quick#29). Language
 # toolchains are left to the Setup Hooks.
 
 FROM node:22-bookworm
@@ -8,7 +8,7 @@ FROM node:22-bookworm
 # test to pass, which proves boxq's seeded config still gives a prompt-free first run.
 ARG CLAUDE_CODE_VERSION=2.1.312
 
-LABEL org.opencontainers.image.source=https://github.com/jonaswre-labs/boxlite-quick
+LABEL org.opencontainers.image.source=https://github.com/jonaswre/boxlite-quick
 LABEL org.opencontainers.image.description="boxq's Base Image: a generic core with Claude Code"
 
 # gh comes from GitHub's own apt repository, as Debian's lags far behind.
