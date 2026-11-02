@@ -117,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
 
 /// Prints BoxLite's `error` events on stderr, or what `BOXQ_LOG` (an `EnvFilter`) selects. BoxLite
 /// returns only a short sentence for a host failure and logs the full report, with its paths and
-/// fix commands, at `error` (jonaswre/boxlite-quick#33).
+/// fix commands, at `error` (jonaswre-labs/boxlite-quick#33).
 ///
 /// By default they go through [`log::STDERR`], so what a Box start attempt logs is dropped if
 /// boxq starts the Box again (see `Sandboxes::start`). With `BOXQ_LOG` set, and not empty, they go

@@ -1,4 +1,4 @@
-//! The Egress Policy: which outbound destinations a Sandbox may reach (jonaswre/boxlite-quick#13).
+//! The Egress Policy: which outbound destinations a Sandbox may reach (jonaswre-labs/boxlite-quick#13).
 
 use crate::Workspace;
 use crate::config::{
@@ -18,7 +18,7 @@ const AGENT: &[&str] = &["api.anthropic.com"];
 
 /// The forge and registries a Sandbox reaches unless the Global Config sets `builtins = false`.
 /// With its nonessential traffic off, Claude Code itself needs only `registry.npmjs.org` (`npx`
-/// MCP servers) and `github.com` (plugin marketplaces) from these (jonaswre/boxlite-quick#3).
+/// MCP servers) and `github.com` (plugin marketplaces) from these (jonaswre-labs/boxlite-quick#3).
 const BUILTINS: &[&str] = &[
     "github.com",
     "*.github.com",
@@ -28,7 +28,7 @@ const BUILTINS: &[&str] = &[
     "files.pythonhosted.org",
     "crates.io",
     "*.crates.io",
-    // apt and rustup, so a Setup Hook can use them (jonaswre/boxlite-quick#30).
+    // apt and rustup, so a Setup Hook can use them (jonaswre-labs/boxlite-quick#30).
     "deb.debian.org",
     "security.debian.org",
     "static.rust-lang.org",

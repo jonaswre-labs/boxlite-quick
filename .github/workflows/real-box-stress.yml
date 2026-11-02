@@ -1,7 +1,7 @@
 name: Real-Box stress
 
 # Runs the real-Box tests many times on GitHub's runners, for a failure only CI shows
-# (jonaswre/boxlite-quick#50). docs/agents/testing.md says when and how. A pull request that edits
+# (jonaswre-labs/boxlite-quick#50). docs/agents/testing.md says when and how. A pull request that edits
 # this file runs it small, so the change is proven before it reaches main, where dispatch finds it.
 on:
   workflow_dispatch:

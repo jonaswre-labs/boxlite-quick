@@ -1,5 +1,5 @@
 //! The curated, credential-free subset of the host's Claude config that every `boxq run` copies
-//! into the Sandbox (jonaswre/boxlite-quick#12).
+//! into the Sandbox (jonaswre-labs/boxlite-quick#12).
 //!
 //! A sync merges rather than replaces: what the host has overwrites the Sandbox's copy, and
 //! nothing is ever deleted, so Claude Code's own state in the Sandbox survives. Something removed
@@ -196,7 +196,7 @@ fn json_file(path: PathBuf, value: Map<String, Value>) -> GuestFile {
 }
 
 /// What is copied from the host's Claude config dir. Everything else there is credentials,
-/// history, caches or host-path state, and never leaves the host (jonaswre/boxlite-quick#3).
+/// history, caches or host-path state, and never leaves the host (jonaswre-labs/boxlite-quick#3).
 const COPIED: [&str; 6] = [
     "CLAUDE.md",
     "rules",
@@ -256,7 +256,7 @@ fn collect_files(
     Ok(())
 }
 
-/// The guest's home. The Agent runs as root in the Sandbox (jonaswre/boxlite-quick#5).
+/// The guest's home. The Agent runs as root in the Sandbox (jonaswre-labs/boxlite-quick#5).
 const GUEST_HOME: &str = "/root";
 
 /// The guest's own file at `path` under its home, if it has one.

@@ -1,5 +1,5 @@
 //! The Agent's auth: the API key goes to BoxLite as a secret scoped to the base URL's host, so
-//! the guest only ever holds a placeholder (jonaswre/boxlite-quick#14).
+//! the guest only ever holds a placeholder (jonaswre-labs/boxlite-quick#14).
 
 use crate::config::{BaseUrl, Config};
 use crate::digest::sha256_hex;
@@ -50,7 +50,7 @@ impl Auth {
             ("ANTHROPIC_BASE_URL".into(), self.base_url.as_str().into()),
             ("ANTHROPIC_AUTH_TOKEN".into(), PLACEHOLDER.into()),
             // Updates, telemetry, error reports and the plugin marketplace would each need
-            // their own egress, and the Agent works without them (jonaswre/boxlite-quick#3).
+            // their own egress, and the Agent works without them (jonaswre-labs/boxlite-quick#3).
             (
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".into(),
                 "1".into(),

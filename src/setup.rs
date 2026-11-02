@@ -1,5 +1,5 @@
 //! The Setup Hooks: the Global then the Workspace Config's `setup`, each run once when a Sandbox
-//! is created and retried until it succeeds (jonaswre/boxlite-quick#30).
+//! is created and retried until it succeeds (jonaswre-labs/boxlite-quick#30).
 
 use crate::Workspace;
 use crate::config::SetupHooks;

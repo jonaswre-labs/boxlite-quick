@@ -47,7 +47,7 @@ async fn a_new_sandbox_gets_the_configured_image_and_resources() {
 }
 
 /// The defaults fill in only the Box: the record keeps the Spec as configured, so a later
-/// change to a default never reads as a config change (jonaswre/boxlite-quick#31).
+/// change to a default never reads as a config change (jonaswre-labs/boxlite-quick#31).
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "boots a real Box; needs KVM"]
 async fn a_sandbox_with_no_resources_configured_gets_boxqs_defaults() {

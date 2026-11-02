@@ -40,7 +40,7 @@ async fn a_stopped_sandbox_is_reattached_with_its_state() {
 }
 
 /// BoxLite 0.11 leaks the shim and VM on `stop` wherever it can't create the Box's cgroup,
-/// which includes GitHub's runners (jonaswre/boxlite-quick#19). Remove `reap_box` once a BoxLite
+/// which includes GitHub's runners (jonaswre-labs/boxlite-quick#19). Remove `reap_box` once a BoxLite
 /// release reaps the tree itself (boxlite-ai/boxlite#1240), and this test still passes.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "boots a real Box; needs KVM"]
@@ -74,7 +74,7 @@ fn shims(home: &Path) -> anyhow::Result<Vec<PathBuf>> {
 }
 
 /// BoxLite 0.11 can tell the host a Box is ready before libkrun listens on its `box.sock`, so the
-/// start fails with "gRPC transport error: transport error" (jonaswre/boxlite-quick#50). A file
+/// start fails with "gRPC transport error: transport error" (jonaswre-labs/boxlite-quick#50). A file
 /// left where libkrun is about to listen stands in for the listener that isn't there yet.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "boots a real Box; needs KVM"]
@@ -125,7 +125,7 @@ async fn a_start_that_succeeds_when_tried_again_prints_only_boxqs_line_about_it(
 }
 
 /// BoxLite 0.11 can rename an image config into its store before the bytes are written, and if
-/// they never are, every start of that image reads it back empty (jonaswre/boxlite-quick#60). A
+/// they never are, every start of that image reads it back empty (jonaswre-labs/boxlite-quick#60). A
 /// cold fixture's store is its own, so its config is this test's to empty.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "boots a real Box; needs KVM"]

@@ -2,7 +2,7 @@ name: Free disk
 description: Deletes the hosted runner's preinstalled toolchains boxq doesn't use
 
 # A full real-Box run writes about 10 GB to its temp directory, and some runners have only about
-# 10 GB free (jonaswre/boxlite-quick#53). These are the toolchains of 1 GB or more on
+# 10 GB free (jonaswre-labs/boxlite-quick#53). These are the toolchains of 1 GB or more on
 # ubuntu-24.04; measured on 2026-11-01, they free about 32 GB in a few seconds. The smaller ones
 # add little, and Docker's images take 14 s for 2 GB.
 runs:

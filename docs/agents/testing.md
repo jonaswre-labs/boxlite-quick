@@ -10,7 +10,7 @@ scripts/real-box [libtest args]   # e.g. scripts/real-box egress:: auth::
 
 It builds the tests, then runs `cargo test --locked --test real_box -- --ignored [libtest args]` at the default thread count. The arguments are test filters such as `egress::`, or `--skip` and `--exact`. The build and the tests share one time limit of 540 s (`REAL_BOX_TIME_LIMIT` seconds). The output also goes to `target/real-box/<timestamp>.log`.
 
-A full run writes about 10 GB to its temporary directory. With `REAL_BOX_MIN_FREE_GB` set, the script runs the tests only if that many GB are free there after the build. On a fuller disk, tests fail in ways that look like boxq's bugs, such as `No space left on device` from `mke2fs`, and then the run can hang (jonaswre/boxlite-quick#53).
+A full run writes about 10 GB to its temporary directory. With `REAL_BOX_MIN_FREE_GB` set, the script runs the tests only if that many GB are free there after the build. On a fuller disk, tests fail in ways that look like boxq's bugs, such as `No space left on device` from `mke2fs`, and then the run can hang (jonaswre-labs/boxlite-quick#53).
 
 The last line, starting `real-box:`, says what happened. The exit status is 0 if every test passed. It is non-zero if the build failed, there wasn't enough free disk (1), a test failed or the time limit was hit (124, or 137 if a test had to be killed). After the time limit, the script kills the VMs that stopped tests left running and removes their homes. A cold build can use up the time limit. If it does, run the script again: the build carries on from where it stopped.
 
@@ -50,14 +50,14 @@ CI's `real-box` job runs the full suite, the Base Image tests included, on every
 
 A failing real-Box test prints BoxLite's `error` events: the failed task (`task=guest_init`) and any crash report. BoxLite's own error is often only a sentence such as `gRPC transport error: transport error`. `BOXQ_LOG=boxlite=debug,tonic=trace` prints more, but to failing tests only.
 
-Loading this host didn't reproduce jonaswre/boxlite-quick#50: starving the CPU (`taskset -c 0`, many test threads) only gives `timed out after 30s waiting for it to become ready`. GitHub's runners differ in disk latency and free disk, so build the loop for a CI-only failure on the runners:
+Loading this host didn't reproduce jonaswre-labs/boxlite-quick#50: starving the CPU (`taskset -c 0`, many test threads) only gives `timed out after 30s waiting for it to become ready`. GitHub's runners differ in disk latency and free disk, so build the loop for a CI-only failure on the runners:
 
 ```sh
 gh workflow run real-box-stress.yml -f jobs=20 -f runs=3 [-f args='lifecycle::'] [-f log='boxlite=debug'] [-f strace=true]
 gh run download <run-id> -n logs-<job> -D <dir>   # works once that job ends
 ```
 
-`gh run view --log` waits for the whole run, but each job's artifact can be downloaded as soon as that job ends. `strace=true` records bind, listen and connect calls with their errno, which is how jonaswre/boxlite-quick#50's missing `box.sock` was found.
+`gh run view --log` waits for the whole run, but each job's artifact can be downloaded as soon as that job ends. `strace=true` records bind, listen and connect calls with their errno, which is how jonaswre-labs/boxlite-quick#50's missing `box.sock` was found.
 
 BoxLite's guest agent and its vendored libkrun aren't in `~/.cargo/registry`. Read them at the pinned release:
 

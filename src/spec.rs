@@ -1,4 +1,4 @@
-//! What a Sandbox is created from: its image and resources (jonaswre/boxlite-quick#18). These
+//! What a Sandbox is created from: its image and resources (jonaswre-labs/boxlite-quick#18). These
 //! are fixed once the Sandbox exists, so a later config change only applies to a new one.
 
 use crate::config::Resources;
@@ -7,10 +7,10 @@ use std::path::Path;
 
 /// boxq's Base Image, which a Sandbox is created from when the config sets none. Pinned by
 /// digest, so a cached copy is used with no registry round trip; bumped by hand to a build the
-/// image workflow published (jonaswre/boxlite-quick#29).
+/// image workflow published (jonaswre-labs/boxlite-quick#29).
 pub const BASE_IMAGE: &str = "ghcr.io/jonaswre/boxq:2.1.312-247cf26@sha256:55a29d246f63c1788b39fec42d4067c11decb5a8843200566abc07abf3165709";
 
-/// What a Sandbox gets for a resource no config sets (jonaswre/boxlite-quick#31). Filled in only
+/// What a Sandbox gets for a resource no config sets (jonaswre-labs/boxlite-quick#31). Filled in only
 /// when the Box is built, so changing one never makes an existing Sandbox look out of date.
 pub const DEFAULT_CPUS: u8 = 4;
 pub const DEFAULT_MEMORY_MIB: u32 = 8 * 1024;

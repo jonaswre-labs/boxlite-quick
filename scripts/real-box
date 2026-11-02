@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the real-Box tests within one command (jonaswre/boxlite-quick#42), as docs/agents/testing.md
+# Runs the real-Box tests within one command (jonaswre-labs/boxlite-quick#42), as docs/agents/testing.md
 # says. Arguments go to libtest after `--ignored`: test filters such as `egress::`, `--skip`,
 # `--exact`.
 #
@@ -7,7 +7,7 @@
 # command ends before an agent's 10-minute limit on one command. The output is saved to a log
 # under target/real-box/. With REAL_BOX_MIN_FREE_GB set, the tests run only if the run's
 # directory has that much free disk after the build: a full run needs about 10 GB, and a disk
-# that fills up fails tests in ways that look like boxq's bugs (jonaswre/boxlite-quick#53).
+# that fills up fails tests in ways that look like boxq's bugs (jonaswre-labs/boxlite-quick#53).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 

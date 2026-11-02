@@ -22,7 +22,7 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
 
-  # Boots a real Box. Only x86_64 hosted runners expose /dev/kvm (jonaswre/boxlite-quick#4).
+  # Boots a real Box. Only x86_64 hosted runners expose /dev/kvm (jonaswre-labs/boxlite-quick#4).
   real-box:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -48,7 +48,7 @@ jobs:
       - run: cargo test --locked --test cli -- --ignored
       # Built first, so a cold build doesn't use up the time limit of scripts/real-box.
       - run: cargo test --locked --test real_box --no-run
-      # A stuck run ends at the script's time limit, with its VMs killed (jonaswre/boxlite-quick#53).
+      # A stuck run ends at the script's time limit, with its VMs killed (jonaswre-labs/boxlite-quick#53).
       - run: scripts/real-box
         env:
           # Twice what a full run writes, so a short disk fails here rather than in a test.

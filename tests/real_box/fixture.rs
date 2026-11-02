@@ -1,5 +1,5 @@
 //! The tests' own [`Fixture`]: its BoxLite home shares the images the run has downloaded
-//! (jonaswre/boxlite-quick#44), unless it is cold.
+//! (jonaswre-labs/boxlite-quick#44), unless it is cold.
 
 use super::*;
 
@@ -29,7 +29,7 @@ async fn a_fixtures_home_starts_with_the_small_images_the_tests_use() {
 const EMPTIED_IMAGE: &str = "mirror.gcr.io/library/busybox:1.37";
 
 /// BoxLite 0.11 can rename a config into the image store before its bytes are written, then read
-/// it back empty (jonaswre/boxlite-quick#54). An empty config left in the store is what it reads.
+/// it back empty (jonaswre-labs/boxlite-quick#54). An empty config left in the store is what it reads.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "pulls images; needs internet access"]
 async fn a_config_found_empty_in_the_image_store_is_downloaded_again() {

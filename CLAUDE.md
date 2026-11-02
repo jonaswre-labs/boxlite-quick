@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues are tracked in GitHub Issues for jonaswre/boxlite-quick, using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues for jonaswre-labs/boxlite-quick, using the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
