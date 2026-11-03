@@ -326,6 +326,12 @@ impl Runtime for Open<'_> {
             ..Default::default()
         };
         new.auth.apply(&mut options);
+        // BoxLite caps the VM process at 1024 open files, but its virtio-fs server holds one open
+        // for each Workspace file the guest keeps cached, so building a large Workspace runs out
+        // (jonaswre-labs/boxlite-quick#67). Left unset, the VM process inherits boxq's limit at
+        // each start and raises it to the hard limit, and the Box stores no limit that a later
+        // start under a lower hard limit would fail to set.
+        options.advanced.security.resource_limits.max_open_files = None;
         let (b, created) = self.rt.get_or_create(options, Some(name.into())).await?;
         let info = b.info().await.context("cannot check the Box's state")?;
         self.held.lock().unwrap().push(b);
