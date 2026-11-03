@@ -25,6 +25,19 @@ async fn a_command_runs_in_a_new_sandbox_while_another_runtime_holds_the_home() 
     assert_eq!(ran, ("hello from the sandbox\n".into(), 0));
 }
 
+/// BoxLite reports death by signal N as -N (jonaswre-labs/boxlite-quick#65).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "boots a real Box; needs KVM"]
+async fn a_command_killed_by_a_signal_ends_with_the_status_a_shell_gives_it() {
+    let f = Fixture::new();
+    let up = f.up(IMAGE).await;
+
+    let killed = SandboxCommand::new(&["sh", "-c", "cat > /dev/null; kill -KILL $$"]);
+    let output = up.target.output(&killed, vec![b'x'; 5 << 20]).await;
+
+    assert_eq!(output.unwrap().status, 137);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "boots a real Box; needs KVM"]
 async fn a_stopped_sandbox_is_reattached_with_its_state() {

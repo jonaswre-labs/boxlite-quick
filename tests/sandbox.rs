@@ -4,14 +4,16 @@
 
 use boxq::Workspace;
 use boxq::auth::Auth;
-use boxq::boxes::{Boxes, Found, NewBox, Opened, Runtime, StartFailure};
+use boxq::boxes::{
+    Boxes, Chunk, ExecTarget, Found, NewBox, Opened, Output, Runtime, SandboxCommand, StartFailure,
+    Streamed,
+};
 use boxq::config::{BaseUrl, Egress};
 use boxq::egress::Policy;
-use boxq::sandbox::{ExecTarget, Listed, NoSandbox, Sandboxes};
+use boxq::sandbox::{Listed, NoSandbox, Sandboxes};
 use boxq::setup::Setup;
 use boxq::spec::Spec;
 use std::collections::{BTreeMap, VecDeque};
-use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::TempDir;
 
@@ -45,13 +47,39 @@ struct State {
 /// The fake, open.
 struct Open<'a>(&'a Fake);
 
+/// Where the fake runs commands: nowhere.
+struct FakeTarget;
+
+impl ExecTarget for FakeTarget {
+    async fn output(&self, _: &SandboxCommand, _: Vec<u8>) -> anyhow::Result<Output> {
+        anyhow::bail!("the fake runs no commands")
+    }
+
+    async fn stream(
+        &self,
+        _: &SandboxCommand,
+        _: impl FnMut(Chunk),
+        _: impl Future<Output = i32>,
+    ) -> anyhow::Result<Streamed> {
+        anyhow::bail!("the fake runs no commands")
+    }
+
+    async fn interactive(&self, _: &SandboxCommand) -> anyhow::Result<i32> {
+        anyhow::bail!("the fake runs no commands")
+    }
+}
+
 impl Boxes for Fake {
-    fn open(&self) -> anyhow::Result<impl Runtime + '_> {
+    type Target = FakeTarget;
+
+    fn open(&self) -> anyhow::Result<impl Runtime<Target = FakeTarget> + '_> {
         Ok(Open(self))
     }
 }
 
 impl Runtime for Open<'_> {
+    type Target = FakeTarget;
+
     async fn find(&self, name: &str) -> anyhow::Result<Option<Found>> {
         let state = self.0.0.lock().unwrap();
         Ok(state.boxes.get(name).map(|&running| Found {
@@ -97,11 +125,8 @@ impl Runtime for Open<'_> {
         Ok(())
     }
 
-    async fn exec_target(&self, name: &str) -> anyhow::Result<ExecTarget> {
-        Ok(ExecTarget::new(
-            PathBuf::from(format!("/boxes/{name}/box.sock")),
-            "container".into(),
-        ))
+    async fn exec_target(&self, _: &str) -> anyhow::Result<FakeTarget> {
+        Ok(FakeTarget)
     }
 
     async fn stop(&self, name: &str) -> anyhow::Result<()> {
@@ -155,7 +180,7 @@ impl Fixture {
         self.state().starts.extend(starts);
     }
 
-    async fn up(&self, ws: &Workspace) -> anyhow::Result<boxq::sandbox::Up> {
+    async fn up(&self, ws: &Workspace) -> anyhow::Result<boxq::sandbox::Up<FakeTarget>> {
         self.sandboxes
             .up(ws, &spec(), &policy(&[]), &auth("sk-key"))
             .await

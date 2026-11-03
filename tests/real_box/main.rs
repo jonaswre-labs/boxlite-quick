@@ -4,10 +4,10 @@
 //! The tests are grouped by area, one module each, so `scripts/real-box <group>::` runs one
 //! group. Each module's doc says which code it covers.
 //!
-//! boxq execs through the Box's own `box.sock` so no runtime (and no `BOXLITE_HOME` lock) is
-//! held during a session (jonaswre-labs/boxlite-quick#8). That leans on BoxLite internals: the
+//! boxq runs commands through the Box's own `box.sock` so no runtime (and no `BOXLITE_HOME` lock)
+//! is held during a session (jonaswre-labs/boxlite-quick#8). That leans on BoxLite internals: the
 //! socket layout, the `BOXLITE_EXECUTOR` env protocol and the container-id directory. These
-//! tests drive boxq's own exec target, so any BoxLite bump must pass them.
+//! tests run commands through boxq's own `BoxLiteTarget`, so any BoxLite bump must pass them.
 
 mod auth;
 mod base_image;
@@ -25,18 +25,18 @@ use boxlite::BoxliteRuntime;
 use boxlite::runtime::options::BoxliteOptions;
 use boxq::Workspace;
 use boxq::auth::Auth;
+use boxq::boxes::{BoxLiteTarget, ExecTarget, SandboxCommand};
 use boxq::claude_config::ClaudeConfig;
 use boxq::config::{BaseUrl, Egress, SetupHooks};
 use boxq::digest::sha256_hex;
 use boxq::egress::Policy;
 use boxq::image_store::{is_config_mismatch, remove_bad_configs};
 use boxq::reap::reap_box;
-use boxq::sandbox::{ExecTarget, Sandboxes, Up};
+use boxq::sandbox::{Sandboxes, Up};
 use boxq::spec::Spec;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use tokio_util::sync::CancellationToken;
 
 // Docker Hub images come through Google's mirror: every home asks the registry for each tag it
 // uses, which in one run is more often than Docker Hub's anonymous limit allows
@@ -297,40 +297,20 @@ fn default_policy() -> Policy {
     policy(&[], &[], false)
 }
 
-/// Runs `sh -c script` through `target` as the image's user, returning its stdout and exit code.
-async fn sh(target: &ExecTarget, script: &str) -> anyhow::Result<(String, i32)> {
-    exec(target, target.command("sh").args(["-c", script])).await
+/// Runs `sh -c script` through `target` as the image's user, returning its stdout and exit
+/// status.
+async fn sh(target: &BoxLiteTarget, script: &str) -> anyhow::Result<(String, i32)> {
+    run(target, SandboxCommand::new(&["sh", "-c", script])).await
 }
 
 /// [`sh`] as root.
-async fn root_sh(target: &ExecTarget, script: &str) -> anyhow::Result<(String, i32)> {
-    exec(
-        target,
-        target.command("sh").args(["-c", script]).user("root"),
-    )
-    .await
+async fn root_sh(target: &BoxLiteTarget, script: &str) -> anyhow::Result<(String, i32)> {
+    run(target, SandboxCommand::new(&["sh", "-c", script]).as_root()).await
 }
 
-async fn exec(target: &ExecTarget, command: boxlite::BoxCommand) -> anyhow::Result<(String, i32)> {
-    let token = CancellationToken::new();
-    let mut exec = target
-        .session()
-        .execution()
-        .await?
-        .exec(command, token.clone())
-        .await?;
-    drop(exec.stdin_tx);
-    let mut stdout = String::new();
-    while let Some(chunk) = exec.stdout_rx.recv().await {
-        stdout.push_str(&chunk);
-    }
-    let result = exec
-        .result_rx
-        .recv()
-        .await
-        .ok_or_else(|| anyhow::anyhow!("exec ended without a result"))?;
-    token.cancel();
-    Ok((stdout, result.exit_code))
+async fn run(target: &BoxLiteTarget, command: SandboxCommand) -> anyhow::Result<(String, i32)> {
+    let output = target.output(&command, Vec::new()).await?;
+    Ok((output.stdout, output.status))
 }
 
 /// A host Claude config with a symlinked skill, settings and MCP servers, as `boxq run` copies it.

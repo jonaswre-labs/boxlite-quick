@@ -6,13 +6,12 @@
 //! on the host stays in the Sandbox until `boxq rm`.
 
 use crate::Workspace;
+use crate::boxes::{ExecTarget, SandboxCommand};
 use crate::config::read_or_default;
-use crate::sandbox::{Chunk, ExecTarget, OutputChunks};
 use anyhow::Context;
 use serde_json::{Map, Value};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use tokio_util::sync::CancellationToken;
 
 /// The host's Claude config: its config dir (`~/.claude`) and its `.claude.json`.
 pub struct ClaudeConfig {
@@ -55,16 +54,17 @@ impl ClaudeConfig {
 
     /// Copies the host's Claude config into the Sandbox `target` runs in, merging it with the
     /// Sandbox's own.
-    pub async fn sync(&self, ws: &Workspace, target: &ExecTarget) -> anyhow::Result<()> {
+    pub async fn sync(&self, ws: &Workspace, target: &impl ExecTarget) -> anyhow::Result<()> {
         let guest_json = read_guest(target, ".claude.json").await?;
         let guest_settings = read_guest(target, ".claude/settings.json").await?;
         let files = self.guest_files(ws, guest_json.as_deref(), guest_settings.as_deref())?;
-        let untar = ["tar", "-x", "-f", "-", "-C", GUEST_HOME];
-        let untarred = run(target, &untar, tar(&files)?).await?;
+        let untar = SandboxCommand::new(&["tar", "-x", "-f", "-", "-C", GUEST_HOME]).as_root();
+        let failed = "cannot copy the Claude config into the Sandbox";
+        let untarred = target.output(&untar, tar(&files)?).await.context(failed)?;
         anyhow::ensure!(
-            untarred.code == 0,
-            "cannot copy the Claude config into the Sandbox: tar exited {}: {}",
-            untarred.code,
+            untarred.status == 0,
+            "{failed}: tar exited {}: {}",
+            untarred.status,
             untarred.stderr.trim_end()
         );
         Ok(())
@@ -260,67 +260,20 @@ fn collect_files(
 const GUEST_HOME: &str = "/root";
 
 /// The guest's own file at `path` under its home, if it has one.
-async fn read_guest(target: &ExecTarget, path: &str) -> anyhow::Result<Option<String>> {
+async fn read_guest(target: &impl ExecTarget, path: &str) -> anyhow::Result<Option<String>> {
     let path = format!("{GUEST_HOME}/{path}");
     let script = r#"test -e "$1" || exit 100; cat "$1""#;
-    let read = run(target, &["sh", "-c", script, "sh", &path], Vec::new()).await?;
-    match read.code {
+    let command = SandboxCommand::new(&["sh", "-c", script, "sh", &path]).as_root();
+    let failed = || format!("cannot read {path} in the Sandbox");
+    let read = target
+        .output(&command, Vec::new())
+        .await
+        .with_context(failed)?;
+    match read.status {
         0 => Ok(Some(read.stdout)),
         100 => Ok(None),
-        code => anyhow::bail!(
-            "cannot read {path} in the Sandbox: exited {code}: {}",
-            read.stderr.trim_end()
-        ),
+        status => anyhow::bail!("{}: exited {status}: {}", failed(), read.stderr.trim_end()),
     }
-}
-
-/// What a command run in the Sandbox printed, and how it exited.
-struct Output {
-    stdout: String,
-    stderr: String,
-    code: i32,
-}
-
-/// Runs `argv` as root in the Sandbox with `stdin` as its input.
-async fn run(target: &ExecTarget, argv: &[&str], stdin: Vec<u8>) -> anyhow::Result<Output> {
-    let token = CancellationToken::new();
-    let _stop = token.clone().drop_guard();
-    let command = target
-        .command(argv[0])
-        .args(argv[1..].iter().copied())
-        .user("root");
-    let mut exec = target
-        .session()
-        .execution()
-        .await?
-        .exec(command, token)
-        .await
-        .with_context(|| format!("cannot run {} in the Sandbox", argv[0]))?;
-    // Chunked, because BoxLite's guest refuses a stdin message over 4 MiB. Dropping the sender
-    // closes the command's stdin.
-    if let Some(tx) = exec.stdin_tx.take() {
-        for chunk in stdin.chunks(64 << 10) {
-            let _ = tx.send(chunk.to_vec());
-        }
-    }
-    let (mut stdout, mut stderr) = (String::new(), String::new());
-    let mut output = OutputChunks::new(exec.stdout_rx, exec.stderr_rx);
-    while let Some(chunk) = output.next().await {
-        match chunk {
-            Chunk::Stdout(text) => stdout.push_str(&text),
-            Chunk::Stderr(text) => stderr.push_str(&text),
-        }
-    }
-    let result = exec
-        .result_rx
-        .recv()
-        .await
-        .with_context(|| format!("{} in the Sandbox ended without a result", argv[0]))?;
-    Ok(Output {
-        stdout,
-        stderr,
-        code: result.exit_code,
-    })
 }
 
 /// `files` as a tar archive, owned by root and dated now, with their parent directories.
