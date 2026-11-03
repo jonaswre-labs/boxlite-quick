@@ -54,3 +54,18 @@ async fn git_works_in_a_worktrees_sandbox_as_on_the_host() {
         "hi\n"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "boots a real Box; needs KVM"]
+async fn a_workspace_with_more_files_than_boxlites_1024_reads_whole() {
+    let f = Fixture::new();
+    for n in 0..3000 {
+        std::fs::write(f.workspace.path().join(format!("file-{n}")), "x").unwrap();
+    }
+    let up = f.up(IMAGE).await;
+    // The guest keeps the files it has looked up cached, and each one holds a host file open
+    // (jonaswre-labs/boxlite-quick#67).
+    let script = format!("cd {} && cat file-* | wc -c", f.workspace.path().display());
+
+    assert_eq!(sh(&up.target, &script).await.unwrap(), ("3000\n".into(), 0));
+}
