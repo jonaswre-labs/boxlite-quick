@@ -3,31 +3,27 @@
 
 use crate::Workspace;
 use crate::auth::Auth;
+use crate::boxes::{BoxLite, Boxes, Found, NewBox, Runtime, StartFailure};
 use crate::config::read_or_default;
 use crate::egress::Policy;
-use crate::image_store::{is_config_mismatch, remove_bad_configs};
 use crate::log;
-use crate::reap::reap_box;
-use crate::runtime;
 use crate::setup::Setup;
 use crate::spec::Spec;
 use anyhow::Context;
-use boxlite::runtime::options::{
-    BoxOptions, NetworkMode, NetworkSpec, OutboundNetworkConfig, RootfsSpec, VolumeSpec,
-};
-use boxlite::{BoxCommand, BoxStatus, BoxliteError, GuestSession, LiteBox};
+use boxlite::{BoxCommand, GuestSession};
 use boxlite_shared::BoxTransport;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc::UnboundedReceiver;
 
-/// How many times `up` tries to start a Box whose start fails with a transport error, or on a
-/// damaged image config (see [`Sandboxes::start`]).
+/// How many times `up` tries to start a Box whose start fails in a way another start may fix
+/// (see [`Sandboxes::start`]).
 const START_ATTEMPTS: u32 = 3;
 
-/// Every Sandbox under one boxq home.
-pub struct Sandboxes {
+/// Every Sandbox under one boxq home, each run by one of `boxes`.
+pub struct Sandboxes<B = BoxLite> {
     home: PathBuf,
+    boxes: B,
 }
 
 /// The Sandbox `up` made ready.
@@ -90,6 +86,14 @@ pub struct ExecTarget {
 }
 
 impl ExecTarget {
+    /// The Box listening on `socket`, running the image in the container `container_id`.
+    pub fn new(socket: PathBuf, container_id: String) -> Self {
+        Self {
+            socket,
+            container_id,
+        }
+    }
+
     pub fn session(&self) -> GuestSession {
         GuestSession::new(BoxTransport::Unix {
             socket_path: self.socket.clone(),
@@ -162,8 +166,10 @@ impl OutputChunks {
 }
 
 impl Sandboxes {
+    /// The Sandboxes under the boxq home `home`, whose Boxes BoxLite runs in the home's own
+    /// `BOXLITE_HOME`.
     pub fn new(home: &Path) -> Self {
-        Self { home: home.into() }
+        Self::with_boxes(home, BoxLite::new(&home.join("boxlite")))
     }
 
     /// The Sandboxes under boxq's home: `BOXQ_HOME`, else `$XDG_DATA_HOME/boxq`, else
@@ -185,7 +191,21 @@ impl Sandboxes {
 
     /// The `BOXLITE_HOME` holding the Sandboxes' Boxes and their image cache.
     pub fn boxlite_home(&self) -> PathBuf {
-        self.home.join("boxlite")
+        self.boxes.home().into()
+    }
+}
+
+impl<B: Boxes> Sandboxes<B> {
+    /// The Sandboxes under the boxq home `home`, whose Boxes are `boxes`.
+    pub fn with_boxes(home: &Path, boxes: B) -> Self {
+        Self {
+            home: home.into(),
+            boxes,
+        }
+    }
+
+    pub fn boxes(&self) -> &B {
+        &self.boxes
     }
 
     /// Creates the Workspace's Sandbox from `spec` with `auth`, or reattaches to the one it has,
@@ -198,12 +218,15 @@ impl Sandboxes {
         egress: &Policy,
         auth: &Auth,
     ) -> anyhow::Result<Up> {
-        let rt = runtime::open(&self.boxlite_home())
+        let rt = self
+            .boxes
+            .open()
             .with_context(|| failed("open the runtime for", ws))?;
+        let name = ws.box_name();
         // The runtime's lock keeps the Box from appearing or vanishing until it is created.
-        let found = rt.get_info(&ws.box_name()).await;
+        let found = rt.find(&name).await;
         let record = match found.with_context(|| failed("look up", ws))? {
-            Some(_) => self.read_record(&ws.box_name())?.unwrap_or(Record {
+            Some(_) => self.read_record(&name)?.unwrap_or(Record {
                 workspace: ws.path().into(),
                 as_created: None,
                 auth: None,
@@ -222,114 +245,58 @@ impl Sandboxes {
             .is_some_and(|created| *created != auth.fingerprint());
         // The record goes first, so a Box never exists without one.
         self.write_record(ws, &record)?;
-        let mut options = BoxOptions {
-            rootfs: RootfsSpec::Image(spec.image.clone()),
-            cpus: Some(spec.cpus_or_default()),
-            memory_mib: Some(spec.memory_mib_or_default()),
-            disk_size_gb: Some(spec.disk_gib_or_default()),
-            entrypoint: Some(vec![]),
-            cmd: Some(vec!["sleep".into(), "infinity".into()]),
-            // Fixed once the Box exists, so a Sandbox keeps the binds it was created with.
-            volumes: ws
-                .shared_dirs()
-                .iter()
-                .map(|dir| {
-                    let dir = dir.to_string_lossy();
-                    VolumeSpec::bind_mount(dir.clone(), dir)
-                })
-                .collect(),
-            // So a new Box never boots with the full access an unset policy means.
-            network: NetworkSpec::Enabled {
-                allow_net: egress.allow_net().to_vec(),
-            },
-            auto_delete: Some(0),
-            detach: true,
-            ..Default::default()
+        let new = NewBox {
+            spec,
+            shared_dirs: &ws.shared_dirs(),
+            allow_net: egress.allow_net(),
+            auth,
         };
-        auth.apply(&mut options);
-        let (b, created) = rt
-            .get_or_create(options, Some(ws.box_name()))
-            .await
-            .with_context(|| failed("create", ws))?;
-        if status(&b, ws).await? != BoxStatus::Running {
-            self.start(&b, ws).await?;
+        let opened = rt.get_or_create(&name, &new).await;
+        let opened = opened.with_context(|| failed("create", ws))?;
+        if !opened.running {
+            self.start(&rt, ws).await?;
         }
         // The Global Config or an Egress Approval may have changed since the Box was created.
-        b.network()
-            .update_outbound(OutboundNetworkConfig {
-                mode: NetworkMode::Enabled,
-                allow_net: egress.allow_net().to_vec(),
-            })
+        rt.allow(&name, egress.allow_net())
             .await
             .with_context(|| failed("apply the Egress Policy to", ws))?;
-        let box_dir = self.boxlite_home().join("boxes").join(b.id().as_ref());
         Ok(Up {
-            created,
-            target: ExecTarget {
-                socket: box_dir.join("sockets/box.sock"),
-                container_id: container_id(&box_dir)?,
-            },
+            created: opened.created,
+            target: rt.exec_target(&name).await?,
             as_created: record.as_created,
             auth_changed,
             setup: record.setup,
         })
     }
 
-    /// Starts the Workspace's Box `b`, trying again if BoxLite reports a transport error, or an
-    /// image config whose bytes don't match its digest.
-    ///
-    /// BoxLite 0.11 can tell the host a Box is ready before libkrun listens on its `box.sock`:
-    /// libkrun binds the socket on a thread of its own, which nothing orders before it passes on
-    /// the guest's ready signal. Where creating the socket file is slow, as on GitHub's runners
-    /// under the real-Box tests, the host's first connection finds no socket, and the start fails
-    /// with "gRPC transport error: transport error" (jonaswre-labs/boxlite-quick#50). BoxLite has
-    /// stopped that Box and marked it failed, so starting it again boots it afresh.
-    ///
-    /// BoxLite 0.11 can also leave an image config in its store empty, which it then reads back
-    /// on every start of that image (see [`is_config_mismatch`]). Removing the bad configs makes
-    /// the next attempt download them again (jonaswre-labs/boxlite-quick#60). Both causes share one
-    /// budget of [`START_ATTEMPTS`].
+    /// Starts the Workspace's Box, trying again, up to [`START_ATTEMPTS`] in all, while the Box
+    /// fails with a [`StartFailure`] that another start may fix.
     ///
     /// What BoxLite logs during an attempt is held back from [`log::STDERR`]: dropped if the Box
     /// is started again, which boxq says in a line of its own, and written unchanged otherwise.
     /// So a start that recovers shows no failure (jonaswre-labs/boxlite-quick#56). With `BOXQ_LOG`
     /// set and not empty, `boxq` writes BoxLite's events straight to stderr, so every attempt
     /// shows.
-    async fn start(&self, b: &LiteBox, ws: &Workspace) -> anyhow::Result<()> {
+    async fn start(&self, rt: &impl Runtime, ws: &Workspace) -> anyhow::Result<()> {
         let mut attempt = 1;
         loop {
-            // A VM leaked by an earlier stop, or by a failed start, must never share the disk
-            // with this one.
-            reap_box(&self.boxlite_home(), b.id().as_ref())?;
             let held = log::STDERR.hold();
-            match b.start().await {
-                Err(BoxliteError::RpcTransport(_)) if attempt < START_ATTEMPTS => {
-                    held.discard();
-                    attempt += 1;
-                    eprintln!(
-                        "The Sandbox for {} wasn't ready to connect; starting it again \
-                         (attempt {attempt} of {START_ATTEMPTS}).",
-                        ws.path().display()
-                    );
+            let again = match rt.start(&ws.box_name()).await {
+                Ok(()) => return Ok(()),
+                Err(StartFailure::NotReady(_)) if attempt < START_ATTEMPTS => {
+                    "wasn't ready to connect; starting it again"
                 }
-                Err(e) if attempt < START_ATTEMPTS && is_config_mismatch(&e) => {
-                    // Removed before the held lines are dropped, so a removal that fails still
-                    // shows BoxLite's report and its error.
-                    if let Err(removing) = remove_bad_configs(&self.boxlite_home()) {
-                        return Err(anyhow::Error::new(e)
-                            .context(format!("{removing:#}"))
-                            .context(failed("start", ws)));
-                    }
-                    held.discard();
-                    attempt += 1;
-                    eprintln!(
-                        "The Sandbox for {} found part of its image damaged on disk; \
-                         downloading it again (attempt {attempt} of {START_ATTEMPTS}).",
-                        ws.path().display()
-                    );
+                Err(StartFailure::DamagedImage(_)) if attempt < START_ATTEMPTS => {
+                    "found part of its image damaged on disk; downloading it again"
                 }
-                started => return started.with_context(|| failed("start", ws)),
-            }
+                Err(e) => return Err(e.into_error().context(failed("start", ws))),
+            };
+            held.discard();
+            attempt += 1;
+            eprintln!(
+                "The Sandbox for {} {again} (attempt {attempt} of {START_ATTEMPTS}).",
+                ws.path().display()
+            );
         }
     }
 
@@ -348,28 +315,20 @@ impl Sandboxes {
 
     /// Stops the Workspace's Sandbox, keeping its state.
     pub async fn stop(&self, ws: &Workspace) -> anyhow::Result<()> {
-        let rt = runtime::open(&self.boxlite_home()).with_context(|| failed("stop", ws))?;
-        let found = rt.get(&ws.box_name()).await;
-        let Some(b) = found.with_context(|| failed("look up", ws))? else {
-            return Err(NoSandbox(ws.path().into()).into());
-        };
-        if status(&b, ws).await? == BoxStatus::Running {
-            b.stop().await.with_context(|| failed("stop", ws))?;
-        }
-        reap_box(&self.boxlite_home(), b.id().as_ref())
+        let rt = self.boxes.open().with_context(|| failed("stop", ws))?;
+        self.find(&rt, ws).await?;
+        rt.stop(&ws.box_name())
+            .await
+            .with_context(|| failed("stop", ws))
     }
 
     /// Removes the Workspace's Sandbox and its state.
     pub async fn rm(&self, ws: &Workspace) -> anyhow::Result<()> {
-        let rt = runtime::open(&self.boxlite_home()).with_context(|| failed("remove", ws))?;
-        let found = rt.get_info(&ws.box_name()).await;
-        let Some(info) = found.with_context(|| failed("look up", ws))? else {
-            return Err(NoSandbox(ws.path().into()).into());
-        };
-        rt.remove(&ws.box_name(), true)
+        let rt = self.boxes.open().with_context(|| failed("remove", ws))?;
+        self.find(&rt, ws).await?;
+        rt.remove(&ws.box_name())
             .await
             .with_context(|| failed("remove", ws))?;
-        reap_box(&self.boxlite_home(), info.id.as_ref())?;
         let record = self.record_path(&ws.box_name());
         match std::fs::remove_file(&record) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -381,14 +340,13 @@ impl Sandboxes {
 
     /// Every Sandbox, ordered by Workspace path, with any whose record is lost last.
     pub async fn list(&self) -> anyhow::Result<Vec<Listed>> {
-        let rt = runtime::open(&self.boxlite_home()).context("cannot list the Sandboxes")?;
+        let rt = self.boxes.open().context("cannot list the Sandboxes")?;
         let mut listed = Vec::new();
-        for info in rt.list_info().await.context("cannot list the Sandboxes")? {
-            let box_name = info.name.unwrap_or_else(|| info.id.to_string());
+        for found in rt.list().await.context("cannot list the Sandboxes")? {
             listed.push(Listed {
-                workspace: self.read_record(&box_name)?.map(|r| r.workspace),
-                box_name,
-                running: info.status == BoxStatus::Running,
+                workspace: self.read_record(&found.name)?.map(|r| r.workspace),
+                box_name: found.name,
+                running: found.running,
             });
         }
         listed.sort_by(|a, b| {
@@ -399,6 +357,14 @@ impl Sandboxes {
             ))
         });
         Ok(listed)
+    }
+
+    /// The Workspace's Box, or [`NoSandbox`] if it has none.
+    async fn find(&self, rt: &impl Runtime, ws: &Workspace) -> anyhow::Result<Found> {
+        let found = rt.find(&ws.box_name()).await;
+        found
+            .with_context(|| failed("look up", ws))?
+            .ok_or_else(|| NoSandbox(ws.path().into()).into())
     }
 
     fn record_path(&self, box_name: &str) -> PathBuf {
@@ -422,29 +388,8 @@ impl Sandboxes {
     }
 }
 
-/// Whether the Workspace's Box `b` is running, stopped or otherwise.
-async fn status(b: &LiteBox, ws: &Workspace) -> anyhow::Result<BoxStatus> {
-    let info = b
-        .info()
-        .await
-        .with_context(|| failed("check the state of", ws))?;
-    Ok(info.status)
-}
-
 /// The error context for a failed `step` on the Workspace's Sandbox: "cannot `step` the Sandbox
 /// for <path>".
 fn failed(step: &str, ws: &Workspace) -> String {
     format!("cannot {step} the Sandbox for {}", ws.path().display())
-}
-
-/// The container id is `pub(crate)` in BoxLite 0.11; it is the one directory name under
-/// `boxes/<id>/shared/containers/`.
-fn container_id(box_dir: &Path) -> anyhow::Result<String> {
-    let dir = box_dir.join("shared/containers");
-    let mut ids = std::fs::read_dir(&dir)
-        .with_context(|| format!("cannot list {}", dir.display()))?
-        .map(|e| Ok(e?.file_name().to_string_lossy().into_owned()))
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    anyhow::ensure!(ids.len() == 1, "expected one container, found {ids:?}");
-    Ok(ids.pop().unwrap())
 }

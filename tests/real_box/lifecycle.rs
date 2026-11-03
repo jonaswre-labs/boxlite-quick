@@ -1,6 +1,7 @@
-//! Creating, reattaching, stopping, removing and listing Sandboxes, waiting on the BoxLite
-//! runtime, and starts that are tried again and what they print: `src/sandbox.rs`,
-//! `src/runtime.rs`, `src/reap.rs`, `src/log.rs` and `src/image_store.rs`.
+//! Creating, reattaching, stopping, removing and listing Sandboxes on real Boxes, waiting on the
+//! BoxLite runtime, and starts that are tried again and what they print: `src/boxes.rs`,
+//! `src/sandbox.rs`, `src/reap.rs`, `src/log.rs` and `src/image_store.rs`. What `src/sandbox.rs`
+//! does over any Boxes is `tests/sandbox.rs`, over a fake.
 //!
 //! Where a test needs another boxq process holding the BoxLite home, a second runtime in this
 //! process stands in for it: BoxLite's home lock is a `flock` on a file each runtime opens for
@@ -185,21 +186,6 @@ async fn a_removed_sandbox_is_created_afresh() {
     assert!(again.created);
     let read = sh(&again.target, "test -e /root/state").await.unwrap();
     assert_eq!(read.1, 1);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "opens a real BoxLite runtime; needs BoxLite's host prerequisites"]
-async fn stop_and_rm_refuse_a_workspace_without_a_sandbox() {
-    let f = Fixture::new();
-
-    let stop = f.sandboxes.stop(&f.workspace).await.unwrap_err();
-    let rm = f.sandboxes.rm(&f.workspace).await.unwrap_err();
-
-    let expected = format!("{} has no Sandbox", f.workspace.path().display());
-    assert_eq!(
-        (stop.to_string(), rm.to_string()),
-        (expected.clone(), expected)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
