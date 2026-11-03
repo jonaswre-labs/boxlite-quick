@@ -1,5 +1,5 @@
-//! `boxq run` launching Claude Code, with a stub `claude` or none: `src/claude.rs`, the run
-//! command in `src/main.rs` and `session::CLAUDE`.
+//! `boxq run` launching a stub Claude Code: `src/claude.rs`, the run command in `src/main.rs`
+//! and `session::CLAUDE`. An image without `claude` is `tests/sandbox.rs`, over a fake.
 
 use super::*;
 
@@ -26,19 +26,4 @@ async fn run_starts_a_stub_claude_in_the_workspace_and_shell_works_beside_it() {
     run.type_in("exit 4\r");
 
     assert_eq!((shell_exit, run.exit_code()), (0, 4));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "boots a real Box; needs KVM"]
-async fn an_image_without_claude_code_is_refused_not_installed_into() {
-    let f = Fixture::new();
-    let up = f.up(IMAGE).await;
-
-    let checked = boxq::claude::check_installed(&up.target, &f.workspace).await;
-
-    let error = checked.unwrap_err().to_string();
-    assert!(
-        error.contains("no `claude`") && error.contains("boxq rm"),
-        "{error}"
-    );
 }
