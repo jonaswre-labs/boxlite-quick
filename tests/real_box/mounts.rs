@@ -1,5 +1,5 @@
 //! The Workspace's mounts, including a worktree's common `.git`: `src/workspace.rs` and the
-//! mounts in `src/sandbox.rs`.
+//! mounts in `src/boxes.rs`.
 
 use super::*;
 

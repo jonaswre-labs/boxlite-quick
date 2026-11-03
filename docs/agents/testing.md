@@ -1,6 +1,6 @@
 # Testing
 
-`cargo test --locked` runs the tests that need no KVM. The real-Box tests in `tests/real_box/` boot real Sandboxes, so they're `#[ignore]`d. Run them with `scripts/real-box`, in the foreground: it ends within 10 minutes, so you get the result in the same command. Don't push a run into the background, and don't pass `--test-threads=1`. Every test has its own BoxLite home, so the default thread count is safe.
+`cargo test --locked` runs the tests that need no KVM. Among them, `tests/sandbox.rs` runs the Sandbox lifecycle in `src/sandbox.rs` (creating, reattaching, starting again, stopping, removing, listing) over a fake of the Boxes in `src/boxes.rs`, so a change there gets a test that runs in milliseconds before it gets a real-Box one. The real-Box tests in `tests/real_box/` boot real Sandboxes, so they're `#[ignore]`d. Run them with `scripts/real-box`, in the foreground: it ends within 10 minutes, so you get the result in the same command. Don't push a run into the background, and don't pass `--test-threads=1`. Every test has its own BoxLite home, so the default thread count is safe.
 
 ## `scripts/real-box`
 
@@ -20,8 +20,8 @@ Run the groups your change touches. Each group is one module in `tests/real_box/
 
 | group | covers |
 | --- | --- |
-| `lifecycle::` | `src/sandbox.rs`, `src/runtime.rs`, `src/reap.rs`, `src/log.rs`, `src/image_store.rs` |
-| `mounts::` | `src/workspace.rs` and the mounts in `src/sandbox.rs` |
+| `lifecycle::` | `src/boxes.rs`, `src/sandbox.rs`, `src/reap.rs`, `src/log.rs`, `src/image_store.rs` |
+| `mounts::` | `src/workspace.rs` and the mounts in `src/boxes.rs` |
 | `spec::` | `src/spec.rs` |
 | `egress::` | `src/egress.rs` |
 | `auth::` | `src/auth.rs` |
