@@ -139,7 +139,7 @@ pub trait ExecTarget {
 
     /// Runs `command` with no input, handing `sink` each chunk it prints as it arrives, until it
     /// ends or `interrupt` gives a signal number. Then the command is sent SIGTERM, and waited
-    /// for.
+    /// for, and how it ended is not reported, nor checked.
     async fn stream(
         &self,
         command: &SandboxCommand,
