@@ -3,18 +3,15 @@
 
 use crate::Workspace;
 use crate::auth::Auth;
-use crate::boxes::{BoxLite, Boxes, Found, NewBox, Runtime, StartFailure};
+use crate::boxes::{BoxLite, BoxLiteTarget, Boxes, Found, NewBox, Runtime, StartFailure};
 use crate::config::read_or_default;
 use crate::egress::Policy;
 use crate::log;
 use crate::setup::Setup;
 use crate::spec::Spec;
 use anyhow::Context;
-use boxlite::{BoxCommand, GuestSession};
-use boxlite_shared::BoxTransport;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tokio::sync::mpsc::UnboundedReceiver;
 
 /// How many times `up` tries to start a Box whose start fails in a way another start may fix
 /// (see [`Sandboxes::start`]).
@@ -26,11 +23,11 @@ pub struct Sandboxes<B = BoxLite> {
     boxes: B,
 }
 
-/// The Sandbox `up` made ready.
-pub struct Up {
+/// The Sandbox `up` made ready, where commands run through `T`.
+pub struct Up<T = BoxLiteTarget> {
     /// Whether `up` created the Sandbox, rather than reattaching to it.
     pub created: bool,
-    pub target: ExecTarget,
+    pub target: T,
     /// What the Sandbox was created from, or `None` if boxq has no record of it.
     pub as_created: Option<Spec>,
     /// Whether the Sandbox was created with another base URL or API key; `false` if boxq has no
@@ -76,93 +73,6 @@ struct Record {
     /// `None` like `as_created`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     setup: Option<Setup>,
-}
-
-/// What a command needs to run in a Sandbox with no runtime open: the Box's own socket, and the
-/// container inside the Box that runs the image.
-pub struct ExecTarget {
-    socket: PathBuf,
-    container_id: String,
-}
-
-impl ExecTarget {
-    /// The Box listening on `socket`, running the image in the container `container_id`.
-    pub fn new(socket: PathBuf, container_id: String) -> Self {
-        Self {
-            socket,
-            container_id,
-        }
-    }
-
-    pub fn session(&self) -> GuestSession {
-        GuestSession::new(BoxTransport::Unix {
-            socket_path: self.socket.clone(),
-        })
-    }
-
-    /// `program` as a command for this Sandbox. `LiteBox::exec` would name the container
-    /// itself; a session on the socket has to.
-    pub fn command(&self, program: &str) -> BoxCommand {
-        BoxCommand::new(program)
-            .env(
-                "BOXLITE_EXECUTOR",
-                format!("container={}", self.container_id),
-            )
-            .working_dir("/")
-    }
-}
-
-/// A Sandbox command's stdout and stderr, read as one sequence of chunks in arrival order.
-pub(crate) struct OutputChunks {
-    stdout: UnboundedReceiver<String>,
-    stderr: UnboundedReceiver<String>,
-    stdout_open: bool,
-    stderr_open: bool,
-}
-
-/// What [`OutputChunks`] reads: some of stdout or of stderr.
-pub(crate) enum Chunk {
-    Stdout(String),
-    Stderr(String),
-}
-
-impl Chunk {
-    pub(crate) fn text(&self) -> &str {
-        match self {
-            Self::Stdout(text) | Self::Stderr(text) => text,
-        }
-    }
-}
-
-impl OutputChunks {
-    pub(crate) fn new(
-        stdout: UnboundedReceiver<String>,
-        stderr: UnboundedReceiver<String>,
-    ) -> Self {
-        Self {
-            stdout,
-            stderr,
-            stdout_open: true,
-            stderr_open: true,
-        }
-    }
-
-    /// The next chunk from either stream, or `None` once both have closed.
-    pub(crate) async fn next(&mut self) -> Option<Chunk> {
-        while self.stdout_open || self.stderr_open {
-            let (chunk, from_stdout) = tokio::select! {
-                c = self.stdout.recv(), if self.stdout_open => (c, true),
-                c = self.stderr.recv(), if self.stderr_open => (c, false),
-            };
-            match chunk {
-                Some(text) if from_stdout => return Some(Chunk::Stdout(text)),
-                Some(text) => return Some(Chunk::Stderr(text)),
-                None if from_stdout => self.stdout_open = false,
-                None => self.stderr_open = false,
-            }
-        }
-        None
-    }
 }
 
 impl Sandboxes {
@@ -217,7 +127,7 @@ impl<B: Boxes> Sandboxes<B> {
         spec: &Spec,
         egress: &Policy,
         auth: &Auth,
-    ) -> anyhow::Result<Up> {
+    ) -> anyhow::Result<Up<B::Target>> {
         let rt = self
             .boxes
             .open()

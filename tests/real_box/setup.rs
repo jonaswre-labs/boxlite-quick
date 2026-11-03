@@ -1,4 +1,5 @@
-//! Setup Hooks: `src/setup.rs`.
+//! Setup Hooks in a real Box: `src/setup.rs`. Which hooks run and what their record keeps is
+//! `tests/sandbox.rs`, over a fake.
 
 use super::*;
 use boxq::setup::{self, Failed, Source};
@@ -23,38 +24,6 @@ impl Fixture {
         .await
         .unwrap()
     }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "boots a real Box; needs KVM"]
-async fn a_failed_setup_hook_runs_again_and_one_that_succeeded_does_not() {
-    let f = Fixture::new();
-    let global = "echo global >> /root/runs";
-    let failing = hooks(Some(global), Some("echo failing >> /root/runs; exit 3"));
-    let fixed = hooks(Some(global), Some("echo fixed >> /root/runs"));
-
-    let created = f.up(IMAGE).await;
-    let failed = f.set_up(&created, &failing).await;
-    let retried = f.set_up(&f.up(IMAGE).await, &fixed).await;
-    f.sandboxes.stop(&f.workspace).await.unwrap();
-    let restarted = f.up(IMAGE).await;
-    let again = f.set_up(&restarted, &fixed).await;
-    let (runs, _) = root_sh(&restarted.target, "cat /root/runs").await.unwrap();
-
-    assert_eq!(
-        failed,
-        Some(Failed {
-            source: Source::Workspace,
-            status: 3,
-            interrupted: false,
-        })
-    );
-    assert_eq!(retried, None);
-    assert_eq!(again, None);
-    assert_eq!(runs, "global\nfailing\nfixed\n");
-    let setup = restarted.setup.unwrap();
-    assert!(setup.changes(&fixed).is_empty());
-    assert_eq!(setup.changes(&failing), ["Workspace Setup Hook"]);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -115,25 +84,4 @@ async fn an_interrupted_setup_hook_is_killed_with_its_children_and_left_to_run_a
     let setup = reattached.setup.unwrap();
     assert!(!setup.global.done);
     assert!(!setup.workspace.done);
-}
-
-/// Sandboxes created before boxq kept a setup record must not run a hook they may never need.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "boots a real Box; needs KVM"]
-async fn a_sandbox_without_a_setup_record_counts_as_set_up() {
-    let f = Fixture::new();
-    f.up(IMAGE).await;
-    let records = f.dirs[0].path().join("sandboxes");
-    for entry in std::fs::read_dir(&records).unwrap() {
-        let path = entry.unwrap().path();
-        let record = std::fs::read_to_string(&path).unwrap();
-        let without_setup = record.split("[setup").next().unwrap().to_string();
-        std::fs::write(&path, without_setup).unwrap();
-    }
-
-    let up = f.up(IMAGE).await;
-    let failed = f.set_up(&up, &hooks(Some("exit 1"), None)).await;
-
-    assert_eq!(up.setup, None);
-    assert_eq!(failed, None);
 }

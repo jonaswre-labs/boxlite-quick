@@ -2,14 +2,14 @@
 //! is created and retried until it succeeds (jonaswre-labs/boxlite-quick#30).
 
 use crate::Workspace;
+use crate::boxes::{Boxes, Chunk, ExecTarget, Streamed};
 use crate::config::SetupHooks;
-use crate::sandbox::{OutputChunks, Sandboxes, Up};
+use crate::sandbox::{Sandboxes, Up};
 use crate::session;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::pin::pin;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio_util::sync::CancellationToken;
 
 /// BoxLite signals only the process it started, though each exec gets its own process group. So
 /// the hook runs in the background of a shell that, told to stop, kills the whole group.
@@ -92,10 +92,10 @@ impl Setup {
 /// Runs the Sandbox's Setup Hooks that haven't succeeded, from `hooks`, stopping at the first that
 /// fails. Ctrl-C, SIGHUP or SIGTERM kills the hook running and counts as its failure. A Sandbox
 /// boxq has no setup record for counts as set up.
-pub async fn run(
-    sandboxes: &Sandboxes,
+pub async fn run<B: Boxes>(
+    sandboxes: &Sandboxes<B>,
     ws: &Workspace,
-    up: &Up,
+    up: &Up<B::Target>,
     hooks: &SetupHooks,
 ) -> anyhow::Result<Option<Failed>> {
     // tokio keeps catching a signal once anything listens for it, which would leave Ctrl-C dead
@@ -126,10 +126,10 @@ pub async fn run(
 }
 
 /// [`run`], with `interrupt` giving the signal that stops it in place of boxq's own signals.
-pub async fn run_until(
-    sandboxes: &Sandboxes,
+pub async fn run_until<B: Boxes>(
+    sandboxes: &Sandboxes<B>,
     ws: &Workspace,
-    up: &Up,
+    up: &Up<B::Target>,
     hooks: &SetupHooks,
     interrupt: impl Future<Output = i32>,
 ) -> anyhow::Result<Option<Failed>> {
@@ -155,7 +155,17 @@ pub async fn run_until(
             continue;
         };
         eprintln!("Running the {source}...");
-        let (status, interrupted) = run_hook(up, ws, command, interrupt.as_mut()).await?;
+        let ran = run_hook(&up.target, ws, command, interrupt.as_mut()).await;
+        let ran = ran.with_context(|| {
+            format!(
+                "cannot run the {source} in the Sandbox for {}",
+                ws.path().display()
+            )
+        })?;
+        let (status, interrupted) = match ran {
+            Streamed::Exited(status) => (status, false),
+            Streamed::Interrupted(signo) => (128 + signo, true),
+        };
         if status != 0 {
             return Ok(Some(Failed {
                 source,
@@ -169,41 +179,14 @@ pub async fn run_until(
     Ok(None)
 }
 
-/// Runs one hook to its end, streaming its output to stderr, and returns its exit status as a
-/// shell reports it and whether `interrupt` stopped it.
+/// Runs one hook to its end, streaming its output to stderr.
 async fn run_hook(
-    up: &Up,
+    target: &impl ExecTarget,
     ws: &Workspace,
     hook: &str,
-    mut interrupt: std::pin::Pin<&mut impl Future<Output = i32>>,
-) -> anyhow::Result<(i32, bool)> {
-    let command = session::command(&up.target, ws, &["sh", "-c", WRAPPER, "sh", hook]);
-    let mut execution = up.target.session().execution().await?;
-    let token = CancellationToken::new();
-    let exec = execution.exec(command, token.clone()).await?;
-    drop(exec.stdin_tx);
-    let mut output = OutputChunks::new(exec.stdout_rx, exec.stderr_rx);
-    let pump = tokio::spawn(async move {
-        while let Some(chunk) = output.next().await {
-            eprint!("{}", chunk.text());
-        }
-    });
-    let mut results = exec.result_rx;
-    let (result, signo) = tokio::select! {
-        result = results.recv() => (result, None),
-        signo = &mut interrupt => {
-            let _ = execution.signal(&exec.execution_id, libc::SIGTERM).await;
-            (results.recv().await, Some(signo))
-        }
-    };
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), pump).await;
-    token.cancel();
-    if let Some(signo) = signo {
-        return Ok((128 + signo, true));
-    }
-    let result = result.context("the setup hook ended without an exit status")?;
-    if let Some(message) = result.error_message {
-        anyhow::bail!("the setup hook did not end normally: {message}");
-    }
-    Ok((session::shell_status(result.exit_code), false))
+    interrupt: std::pin::Pin<&mut impl Future<Output = i32>>,
+) -> anyhow::Result<Streamed> {
+    let command = session::command(ws, &["sh", "-c", WRAPPER, "sh", hook]);
+    let sink = |chunk: Chunk| eprint!("{}", chunk.text());
+    target.stream(&command, sink, interrupt).await
 }

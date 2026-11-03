@@ -3,7 +3,7 @@
 use super::*;
 
 /// Whether an HTTPS GET of `url` from the Sandbox succeeds.
-async fn reaches(target: &ExecTarget, url: &str) -> bool {
+async fn reaches(target: &BoxLiteTarget, url: &str) -> bool {
     let script = format!("wget -q -T 15 -O /dev/null {url}");
     sh(target, &script).await.unwrap().1 == 0
 }

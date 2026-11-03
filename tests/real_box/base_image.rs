@@ -3,10 +3,11 @@
 //! each takes minutes and needs internet access.
 
 use super::*;
+use tokio_util::sync::CancellationToken;
 
 /// What Claude Code's TUI draws in `target`'s Sandbox in its first seconds after `input` is
 /// typed, escape codes and all.
-async fn claude_screen(target: &ExecTarget, ws: &Workspace, input: &str) -> String {
+async fn claude_screen(target: &BoxLiteTarget, ws: &Workspace, input: &str) -> String {
     let token = CancellationToken::new();
     let claude = target
         .command("claude")
